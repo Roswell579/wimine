@@ -1,0 +1,42 @@
+Instructions pour déplacer le FloatingMapSelector sous la boussole
+================================================================
+
+Dans Form1.Designer.cs, trouvez cette section :
+
+// Boussole (en haut à gauche)
+_floatingCompass = new FloatingCompass
+{
+    Location = new Point(20, 60),
+    Anchor = AnchorStyles.Top | AnchorStyles.Left
+};
+
+// Contrôle flottant de sélection de carte (en haut à droite) <-- ANCIENNE POSITION
+_floatingMapSelector = new FloatingMapSelector
+{
+    Location = new Point(this.ClientSize.Width - 300, 60),
+    Anchor = AnchorStyles.Top | AnchorStyles.Right
+};
+
+REMPLACEZ PAR :
+
+// Boussole (en haut à gauche)
+_floatingCompass = new FloatingCompass
+{
+    Location = new Point(20, 60),
+    Anchor = AnchorStyles.Top | AnchorStyles.Left
+};
+
+// Contrôle flottant de sélection de carte (sous la boussole) <-- NOUVELLE POSITION
+_floatingMapSelector = new FloatingMapSelector
+{
+    Location = new Point(20, 180),  // 20px à gauche, 180px du haut (120px sous la boussole)
+    Anchor = AnchorStyles.Top | AnchorStyles.Left
+};
+
+EXPLICATIONS :
+- X = 20 : Aligné à gauche comme la boussole
+- Y = 180 : Position verticale (la boussole fait environ 100-120px de hauteur)
+- Anchor = Top | Left : Ancré en haut à gauche comme la boussole
+
+Si la boussole a une hauteur différente, ajustez la valeur Y en conséquence.
+Par exemple, si la boussole fait 100px de hauteur, utilisez Y = 170 (60 + 100 + 10 pour l'espacement)

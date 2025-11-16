@@ -1,0 +1,2114 @@
+﻿using GMap.NET;
+using GMap.NET.MapProviders;
+using GMap.NET.WindowsForms;
+using GMap.NET.WindowsForms.Markers;
+using wmine.Forms;
+using wmine.Models;
+using wmine.Services;
+using wmine.UI;
+
+namespace wmine
+{
+    public partial class Form1 : Form
+    {
+        private readonly FilonDataService _dataService;
+        private readonly PdfExportService _pdfService;
+        private readonly EmailService _emailService;
+        private readonly MapProviderService _mapProviderService;
+        private GMapOverlay _markersOverlay;
+        private List<Filon> _currentFilons;
+        private bool _isAddPinMode = false;
+        private GMapOverlay _tempMarkerOverlay;
+
+        public Form1()
+        {
+            InitializeComponent();
+
+            _dataService = new FilonDataService();
+            _pdfService = new PdfExportService();
+            _emailService = new EmailService(_pdfService);
+            _markersOverlay = new GMapOverlay("filons");
+            _tempMarkerOverlay = new GMapOverlay("temp");
+            _currentFilons = new List<Filon>();
+            _mapProviderService = new MapProviderService(gMapControl);
+
+            // ⭐ Ajouter le bouton OCR
+            AddOcrImportButton();
+
+            InitializeMap();
+            LoadFilons();
+            ApplyGlassEffects();
+        }
+
+        private async void ApplyGlassEffects()
+        {
+            // Attendre que le formulaire soit complètement chargé
+            await Task.Delay(100);
+
+            // Activer l'effet de flou Windows 10/11 sur le formulaire
+            if (Environment.OSVersion.Version.Major >= 10)
+            {
+                GlassEffects.EnableBlur(this, 220);
+            }
+
+            // Animation d'entrée
+            await GlassEffects.FadeIn(this, 400);
+        }
+
+        private void InitializeMap()
+        {
+            try
+            {
+                // Configuration de la carte avec style sombre
+                gMapControl.MapProvider = GMapProviders.OpenStreetMap;
+                gMapControl.Position = new PointLatLng(43.4, 6.3);
+                gMapControl.MinZoom = 5;
+                gMapControl.MaxZoom = 18;
+                gMapControl.Zoom = 10;
+                gMapControl.ShowCenter = false;
+                gMapControl.DragButton = MouseButtons.Left;
+
+                // Style sombre pour la carte
+                gMapControl.EmptyTileColor = Color.FromArgb(30, 30, 40);
+                gMapControl.BackColor = Color.FromArgb(25, 25, 35);
+
+                gMapControl.Overlays.Add(_markersOverlay);
+                gMapControl.Overlays.Add(_tempMarkerOverlay);
+
+                // Événements pour l'interaction avec la carte
+                gMapControl.MouseClick += GMapControl_MouseClick;
+                gMapControl.OnMarkerClick += GMapControl_OnMarkerClick;
+                gMapControl.MouseMove += GMapControl_MouseMove;
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur lors de l'initialisation de la carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Gestion du clic sur la carte
+        /// </summary>
+        private void GMapControl_MouseClick(object? sender, MouseEventArgs e)
+        {
+            // Mode placement de pin actif
+            if (_isAddPinMode && e.Button == MouseButtons.Left)
+            {
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                CreateFilonAtPosition(point.Lat, point.Lng);
+                ExitAddPinMode();
+                return;
+            }
+
+            // Clic droit pour ajouter un nouveau filon
+            if (e.Button == MouseButtons.Right)
+            {
+                // Convertir la position du clic en coordonnées GPS
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+
+                // Créer un menu contextuel
+                var contextMenu = new ContextMenuStrip();
+                contextMenu.BackColor = Color.FromArgb(35, 40, 50);
+                contextMenu.ForeColor = Color.White;
+                contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+
+                var menuAddFilon = new ToolStripMenuItem("📍 Nouveau filon ici");
+                menuAddFilon.Click += (s, args) => CreateFilonAtPosition(point.Lat, point.Lng);
+
+                var menuCopyCoords = new ToolStripMenuItem($"📋 Copier coordonnées");
+                menuCopyCoords.Click += (s, args) =>
+                {
+                    var coords = $"Lat: {point.Lat:F6}°, Lon: {point.Lng:F6}°";
+                    Clipboard.SetText(coords);
+                    ShowModernMessageBox($"Coordonnées copiées:\n{coords}", "Info", MessageBoxIcon.Information);
+                };
+
+                contextMenu.Items.Add(menuAddFilon);
+                contextMenu.Items.Add(new ToolStripSeparator());
+                contextMenu.Items.Add(menuCopyCoords);
+
+                contextMenu.Show(gMapControl, e.Location);
+            }
+        }
+
+        private void CreateTempPin(PointLatLng point)
+        {
+            // Effacer le marqueur temporaire précédent
+            _tempMarkerOverlay.Markers.Clear();
+
+            // Créer un nouveau marqueur temporaire
+            var tempMarker = new GMarkerGoogle(point, GMarkerGoogleType.red_dot);
+            tempMarker.ToolTipText = "Nouveau filon ici";
+            tempMarker.IsVisible = true;
+
+            _tempMarkerOverlay.Markers.Add(tempMarker);
+            gMapControl.Refresh();
+        }
+
+        /// <summary>
+        /// Gestion du clic sur un marker existant
+        /// </summary>
+        private void GMapControl_OnMarkerClick(GMapMarker item, MouseEventArgs e)
+        {
+            if (item.Tag is Filon filon)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    // Double-clic pour éditer
+                    if (e.Clicks == 2)
+                    {
+                        EditFilon(filon);
+                    }
+                    else
+                    {
+                        // Simple clic: sélectionner dans la liste
+                        var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                            .FirstOrDefault(i => i.Filon?.Id == filon.Id);
+                        if (comboItem != null)
+                        {
+                            cmbSelectFilon.SelectedItem = comboItem;
+                        }
+                    }
+                }
+                else if (e.Button == MouseButtons.Right)
+                {
+                    // Menu contextuel sur le marker
+                    ShowMarkerContextMenu(filon, e.Location);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Affichage du menu contextuel pour un marker
+        /// </summary>
+        private void ShowMarkerContextMenu(Filon filon, Point location)
+        {
+            var contextMenu = new ContextMenuStrip();
+            contextMenu.BackColor = Color.FromArgb(35, 40, 50);
+            contextMenu.ForeColor = Color.White;
+            contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+
+            var menuEdit = new ToolStripMenuItem($"✏️ Éditer '{filon.Nom}'");
+            menuEdit.Click += (s, e) => EditFilon(filon);
+
+            var menuDelete = new ToolStripMenuItem($"🗑️ Supprimer '{filon.Nom}'");
+            menuDelete.Click += (s, e) => DeleteFilon(filon);
+
+            var menuExport = new ToolStripMenuItem($"📄 Exporter en PDF");
+            menuExport.Click += (s, e) => ExportFilonToPdf(filon);
+
+            var menuCopyCoords = new ToolStripMenuItem($"📋 Copier coordonnées");
+            menuCopyCoords.Click += (s, e) =>
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var coords = $"Lat: {filon.Latitude:F6}°, Lon: {filon.Longitude:F6}°";
+                    Clipboard.SetText(coords);
+                    ShowModernMessageBox($"Coordonnées copiées:\n{coords}", "Info", MessageBoxIcon.Information);
+                }
+            };
+
+            contextMenu.Items.Add(menuEdit);
+            contextMenu.Items.Add(menuDelete);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(menuExport);
+            contextMenu.Items.Add(menuCopyCoords);
+
+            contextMenu.Show(gMapControl, location);
+        }
+
+        /// <summary>
+        /// Gestion du survol de la carte (pour feedback visuel)
+        /// </summary>
+        private void GMapControl_MouseMove(object? sender, MouseEventArgs e)
+        {
+            // Mode placement de pin: afficher un marker temporaire
+            if (_isAddPinMode)
+            {
+                _tempMarkerOverlay.Markers.Clear();
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+
+                // Créer un marker temporaire semi-transparent
+                var tempMarker = new GMarkerGoogle(point, GMarkerGoogleType.red_pushpin)
+                {
+                    ToolTipText = $"Cliquez pour placer le filon ici\nLat: {point.Lat:F6}°\nLon: {point.Lng:F6}°"
+                };
+                _tempMarkerOverlay.Markers.Add(tempMarker);
+
+                gMapControl.Cursor = Cursors.Cross;
+                gMapControl.Refresh();
+                return;
+            }
+
+            // Changer le curseur selon le contexte
+            var marker = _markersOverlay.Markers.FirstOrDefault(m =>
+            {
+                var markerLocal = gMapControl.FromLatLngToLocal(m.Position);
+                var markerRect = new Rectangle(
+                    (int)(markerLocal.X - 20),
+                    (int)(markerLocal.Y - 50),
+                    40, 50
+                );
+                return markerRect.Contains(e.Location);
+            });
+
+            gMapControl.Cursor = marker != null ? Cursors.Hand : Cursors.Default;
+        }
+
+        /// <summary>
+        /// Activer le mode placement de pin
+        /// </summary>
+        private void EnterAddPinMode()
+        {
+            _isAddPinMode = true;
+            btnAddFilon.Text = "❌ Annuler";
+            btnAddFilon.BaseColor = Color.FromArgb(244, 67, 54);
+            gMapControl.Cursor = Cursors.Cross;
+            gMapControl.DragButton = MouseButtons.None;
+
+            ShowModernMessageBox("📍 Mode placement de pin activé\n\nCliquez sur la carte pour placer un nouveau filon.",
+                "Mode Placement", MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Quitter le mode placement de pin
+        /// </summary>
+        private void ExitAddPinMode()
+        {
+            _isAddPinMode = false;
+            _tempMarkerOverlay.Markers.Clear();
+            btnAddFilon.Text = "+ Nouveau";
+            btnAddFilon.BaseColor = Color.FromArgb(0, 150, 136);
+            gMapControl.Cursor = Cursors.Default;
+            gMapControl.DragButton = MouseButtons.Left;
+            gMapControl.Refresh();
+        }
+
+        /// <summary>
+        /// Créer un nouveau filon à une position donnée
+        /// </summary>
+        private async void CreateFilonAtPosition(double latitude, double longitude)
+        {
+            var newFilon = new Filon
+            {
+                Latitude = latitude,
+                Longitude = longitude
+            };
+
+            // Calculer les coordonnées Lambert
+            var (x, y) = CoordinateConverter.WGS84ToLambert3(latitude, longitude);
+            newFilon.LambertX = x;
+            newFilon.LambertY = y;
+
+            // Ouvrir le formulaire d'édition
+            using var form = new FilonEditForm(newFilon);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.AddFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+
+                // Sélectionner le nouveau filon
+                await Task.Delay(100);
+                var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == form.Filon.Id);
+                if (comboItem != null)
+                {
+                    cmbSelectFilon.SelectedItem = comboItem;
+                }
+
+                ShowModernMessageBox("✅ Filon créé avec succès!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        /// <summary>
+        /// Crée un nouveau filon sans coordonnées GPS
+        /// </summary>
+        private async void CreateFilonWithoutCoordinates()
+        {
+            var newFilon = new Filon
+            {
+                Nom = "Nouveau filon",
+                MatierePrincipale = MineralType.Fer
+            };
+
+            using var form = new FilonEditForm(newFilon);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.AddFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+
+                // Sélectionner le nouveau filon
+                await Task.Delay(100);
+                var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == form.Filon.Id);
+                if (comboItem != null)
+                {
+                    cmbSelectFilon.SelectedItem = comboItem;
+                }
+
+                ShowModernMessageBox("✅ Filon créé avec succès!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        /// <summary>
+        /// Éditer un filon existant
+        /// </summary>
+        private void EditFilon(Filon filon)
+        {
+            using var form = new FilonEditForm(filon);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.UpdateFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+                ShowModernMessageBox("✅ Filon mis à jour!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        /// <summary>
+        /// Supprimer un filon
+        /// </summary>
+        private void DeleteFilon(Filon filon)
+        {
+            if (ShowModernConfirmation($"Êtes-vous sûr de vouloir supprimer le filon '{filon.Nom}' ?",
+                "Confirmation"))
+            {
+                _dataService.DeleteFilon(filon.Id);
+                LoadFilons(GetSelectedFilter());
+                ShowModernMessageBox("✅ Filon supprimé!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        /// <summary>
+        /// Exporter un filon en PDF
+        /// </summary>
+        private void ExportFilonToPdf(Filon filon)
+        {
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "PDF|*.pdf",
+                FileName = $"Filon_{filon.Nom}.pdf"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    _pdfService.ExportFilonToPdf(filon, sfd.FileName);
+                    ShowModernMessageBox("✅ Export PDF réussi!", "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"Erreur lors de l'export PDF: {ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var lblQuestion = new Label
+            {
+                Text = "Comment souhaitez-vous créer le nouveau filon ?",
+                Location = new Point(30, 30),
+                Width = 440,
+                Height = 40,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 181, 246),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            var btnPinMode = new Button
+            {
+                Text = "📍 Placer un pin sur la carte",
+                Location = new Point(30, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(0, 150, 136),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnPinMode.FlatAppearance.BorderSize = 0;
+            btnPinMode.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Yes;
+                choiceForm.Close();
+            };
+
+            var btnDirectForm = new Button
+            {
+                Text = "📝 Créer directement",
+                Location = new Point(250, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(33, 150, 243),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnDirectForm.FlatAppearance.BorderSize = 0;
+            btnDirectForm.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.No;
+                choiceForm.Close();
+            };
+
+            var btnCancel = new Button
+            {
+                Text = "Annuler",
+                Location = new Point(180, 170),
+                Width = 120,
+                Height = 35,
+                BackColor = Color.FromArgb(244, 67, 54),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Cancel;
+                choiceForm.Close();
+            };
+
+            choiceForm.Controls.Add(lblQuestion);
+            choiceForm.Controls.Add(btnPinMode);
+            choiceForm.Controls.Add(btnDirectForm);
+            choiceForm.Controls.Add(btnCancel);
+
+            var result = choiceForm.ShowDialog();
+
+            if (result == DialogResult.Yes)
+            {
+                // Mode placement de pin sur la carte
+                EnterAddPinMode();
+            }
+            else if (result == DialogResult.No)
+            {
+                // Création directe sans coordonnées GPS
+                CreateFilonWithoutCoordinates();
+            }
+            // Si Cancel, ne rien faire
+        }
+
+        private void BtnEditFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à éditer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            EditFilon(selectedItem.Filon);
+        }
+
+        private void BtnDeleteFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à supprimer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            DeleteFilon(selectedItem.Filon);
+        }
+
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            ExportFilonToPdf(selectedItem.Filon);
+        }
+
+        /// <summary>
+        /// Export tous les filons en CSV
+        /// </summary>
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        {
+            if (_currentFilons == null || _currentFilons.Count == 0)
+            {
+                ShowModernMessageBox("Aucun filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = $"Filons_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                Title = "Exporter tous les filons en CSV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var csvService = new CsvExportService();
+                    csvService.ExportFilonsToCsv(_currentFilons, sfd.FileName);
+
+                    ShowModernMessageBox($"✅ Export CSV réussi !\n\n" +
+                        $"{_currentFilons.Count} filon(s) exporté(s)\n" +
+                        $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                        "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"❌ Erreur lors de l'export CSV:\n\n{ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var lblQuestion = new Label
+            {
+                Text = "Comment souhaitez-vous créer le nouveau filon ?",
+                Location = new Point(30, 30),
+                Width = 440,
+                Height = 40,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 181, 246),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            var btnPinMode = new Button
+            {
+                Text = "📍 Placer un pin sur la carte",
+                Location = new Point(30, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(0, 150, 136),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnPinMode.FlatAppearance.BorderSize = 0;
+            btnPinMode.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Yes;
+                choiceForm.Close();
+            };
+
+            var btnDirectForm = new Button
+            {
+                Text = "📝 Créer directement",
+                Location = new Point(250, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(33, 150, 243),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnDirectForm.FlatAppearance.BorderSize = 0;
+            btnDirectForm.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.No;
+                choiceForm.Close();
+            };
+
+            var btnCancel = new Button
+            {
+                Text = "Annuler",
+                Location = new Point(180, 170),
+                Width = 120,
+                Height = 35,
+                BackColor = Color.FromArgb(244, 67, 54),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Cancel;
+                choiceForm.Close();
+            };
+
+            choiceForm.Controls.Add(lblQuestion);
+            choiceForm.Controls.Add(btnPinMode);
+            choiceForm.Controls.Add(btnDirectForm);
+            choiceForm.Controls.Add(btnCancel);
+
+            var result = choiceForm.ShowDialog();
+
+            if (result == DialogResult.Yes)
+            {
+                // Mode placement de pin sur la carte
+                EnterAddPinMode();
+            }
+            else if (result == DialogResult.No)
+            {
+                // Création directe sans coordonnées GPS
+                CreateFilonWithoutCoordinates();
+            }
+            // Si Cancel, ne rien faire
+        }
+
+        private void BtnEditFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à éditer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            EditFilon(selectedItem.Filon);
+        }
+
+        private void BtnDeleteFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à supprimer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            DeleteFilon(selectedItem.Filon);
+        }
+
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            ExportFilonToPdf(selectedItem.Filon);
+        }
+
+        /// <summary>
+        /// Export tous les filons en CSV
+        /// </summary>
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        {
+            if (_currentFilons == null || _currentFilons.Count == 0)
+            {
+                ShowModernMessageBox("Aucun filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = $"Filons_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                Title = "Exporter tous les filons en CSV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var csvService = new CsvExportService();
+                    csvService.ExportFilonsToCsv(_currentFilons, sfd.FileName);
+
+                    ShowModernMessageBox($"✅ Export CSV réussi !\n\n" +
+                        $"{_currentFilons.Count} filon(s) exporté(s)\n" +
+                        $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                        "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"❌ Erreur lors de l'export CSV:\n\n{ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var lblQuestion = new Label
+            {
+                Text = "Comment souhaitez-vous créer le nouveau filon ?",
+                Location = new Point(30, 30),
+                Width = 440,
+                Height = 40,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 181, 246),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            var btnPinMode = new Button
+            {
+                Text = "📍 Placer un pin sur la carte",
+                Location = new Point(30, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(0, 150, 136),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnPinMode.FlatAppearance.BorderSize = 0;
+            btnPinMode.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Yes;
+                choiceForm.Close();
+            };
+
+            var btnDirectForm = new Button
+            {
+                Text = "📝 Créer directement",
+                Location = new Point(250, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(33, 150, 243),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnDirectForm.FlatAppearance.BorderSize = 0;
+            btnDirectForm.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.No;
+                choiceForm.Close();
+            };
+
+            var btnCancel = new Button
+            {
+                Text = "Annuler",
+                Location = new Point(180, 170),
+                Width = 120,
+                Height = 35,
+                BackColor = Color.FromArgb(244, 67, 54),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Cancel;
+                choiceForm.Close();
+            };
+
+            choiceForm.Controls.Add(lblQuestion);
+            choiceForm.Controls.Add(btnPinMode);
+            choiceForm.Controls.Add(btnDirectForm);
+            choiceForm.Controls.Add(btnCancel);
+
+            var result = choiceForm.ShowDialog();
+
+            if (result == DialogResult.Yes)
+            {
+                // Mode placement de pin sur la carte
+                EnterAddPinMode();
+            }
+            else if (result == DialogResult.No)
+            {
+                // Création directe sans coordonnées GPS
+                CreateFilonWithoutCoordinates();
+            }
+            // Si Cancel, ne rien faire
+        }
+
+        private void BtnEditFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à éditer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            EditFilon(selectedItem.Filon);
+        }
+
+        private void BtnDeleteFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à supprimer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            DeleteFilon(selectedItem.Filon);
+        }
+
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            ExportFilonToPdf(selectedItem.Filon);
+        }
+
+        /// <summary>
+        /// Export tous les filons en CSV
+        /// </summary>
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        {
+            if (_currentFilons == null || _currentFilons.Count == 0)
+            {
+                ShowModernMessageBox("Aucun filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = $"Filons_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                Title = "Exporter tous les filons en CSV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var csvService = new CsvExportService();
+                    csvService.ExportFilonsToCsv(_currentFilons, sfd.FileName);
+
+                    ShowModernMessageBox($"✅ Export CSV réussi !\n\n" +
+                        $"{_currentFilons.Count} filon(s) exporté(s)\n" +
+                        $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                        "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"❌ Erreur lors de l'export CSV:\n\n{ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var lblQuestion = new Label
+            {
+                Text = "Comment souhaitez-vous créer le nouveau filon ?",
+                Location = new Point(30, 30),
+                Width = 440,
+                Height = 40,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 181, 246),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            var btnPinMode = new Button
+            {
+                Text = "📍 Placer un pin sur la carte",
+                Location = new Point(30, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(0, 150, 136),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnPinMode.FlatAppearance.BorderSize = 0;
+            btnPinMode.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Yes;
+                choiceForm.Close();
+            };
+
+            var btnDirectForm = new Button
+            {
+                Text = "📝 Créer directement",
+                Location = new Point(250, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(33, 150, 243),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnDirectForm.FlatAppearance.BorderSize = 0;
+            btnDirectForm.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.No;
+                choiceForm.Close();
+            };
+
+            var btnCancel = new Button
+            {
+                Text = "Annuler",
+                Location = new Point(180, 170),
+                Width = 120,
+                Height = 35,
+                BackColor = Color.FromArgb(244, 67, 54),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Cancel;
+                choiceForm.Close();
+            };
+
+            choiceForm.Controls.Add(lblQuestion);
+            choiceForm.Controls.Add(btnPinMode);
+            choiceForm.Controls.Add(btnDirectForm);
+            choiceForm.Controls.Add(btnCancel);
+
+            var result = choiceForm.ShowDialog();
+
+            if (result == DialogResult.Yes)
+            {
+                // Mode placement de pin sur la carte
+                EnterAddPinMode();
+            }
+            else if (result == DialogResult.No)
+            {
+                // Création directe sans coordonnées GPS
+                CreateFilonWithoutCoordinates();
+            }
+            // Si Cancel, ne rien faire
+        }
+
+        private void BtnEditFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à éditer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            EditFilon(selectedItem.Filon);
+        }
+
+        private void BtnDeleteFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à supprimer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            DeleteFilon(selectedItem.Filon);
+        }
+
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            ExportFilonToPdf(selectedItem.Filon);
+        }
+
+        /// <summary>
+        /// Export tous les filons en CSV
+        /// </summary>
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        {
+            if (_currentFilons == null || _currentFilons.Count == 0)
+            {
+                ShowModernMessageBox("Aucun filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = $"Filons_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                Title = "Exporter tous les filons en CSV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var csvService = new CsvExportService();
+                    csvService.ExportFilonsToCsv(_currentFilons, sfd.FileName);
+
+                    ShowModernMessageBox($"✅ Export CSV réussi !\n\n" +
+                        $"{_currentFilons.Count} filon(s) exporté(s)\n" +
+                        $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                        "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"❌ Erreur lors de l'export CSV:\n\n{ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            var lblQuestion = new Label
+            {
+                Text = "Comment souhaitez-vous créer le nouveau filon ?",
+                Location = new Point(30, 30),
+                Width = 440,
+                Height = 40,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 181, 246),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            var btnPinMode = new Button
+            {
+                Text = "📍 Placer un pin sur la carte",
+                Location = new Point(30, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(0, 150, 136),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnPinMode.FlatAppearance.BorderSize = 0;
+            btnPinMode.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Yes;
+                choiceForm.Close();
+            };
+
+            var btnDirectForm = new Button
+            {
+                Text = "📝 Créer directement",
+                Location = new Point(250, 90),
+                Width = 200,
+                Height = 60,
+                BackColor = Color.FromArgb(33, 150, 243),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnDirectForm.FlatAppearance.BorderSize = 0;
+            btnDirectForm.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.No;
+                choiceForm.Close();
+            };
+
+            var btnCancel = new Button
+            {
+                Text = "Annuler",
+                Location = new Point(180, 170),
+                Width = 120,
+                Height = 35,
+                BackColor = Color.FromArgb(244, 67, 54),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Click += (s, ev) =>
+            {
+                choiceForm.DialogResult = DialogResult.Cancel;
+                choiceForm.Close();
+            };
+
+            choiceForm.Controls.Add(lblQuestion);
+            choiceForm.Controls.Add(btnPinMode);
+            choiceForm.Controls.Add(btnDirectForm);
+            choiceForm.Controls.Add(btnCancel);
+
+            var result = choiceForm.ShowDialog();
+
+            if (result == DialogResult.Yes)
+            {
+                // Mode placement de pin sur la carte
+                EnterAddPinMode();
+            }
+            else if (result == DialogResult.No)
+            {
+                // Création directe sans coordonnées GPS
+                CreateFilonWithoutCoordinates();
+            }
+            // Si Cancel, ne rien faire
+        }
+
+        private void BtnEditFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à éditer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            EditFilon(selectedItem.Filon);
+        }
+
+        private void BtnDeleteFilon_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à supprimer.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            DeleteFilon(selectedItem.Filon);
+        }
+
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
+        {
+            var selectedItem = cmbSelectFilon.SelectedItem as FilonComboItem;
+            if (selectedItem?.Filon == null)
+            {
+                ShowModernMessageBox("Veuillez sélectionner un filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            ExportFilonToPdf(selectedItem.Filon);
+        }
+
+        /// <summary>
+        /// Export tous les filons en CSV
+        /// </summary>
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
+        {
+            if (_currentFilons == null || _currentFilons.Count == 0)
+            {
+                ShowModernMessageBox("Aucun filon à exporter.",
+                    "Information", MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = $"Filons_Export_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+                Title = "Exporter tous les filons en CSV"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var csvService = new CsvExportService();
+                    csvService.ExportFilonsToCsv(_currentFilons, sfd.FileName);
+
+                    ShowModernMessageBox($"✅ Export CSV réussi !\n\n" +
+                        $"{_currentFilons.Count} filon(s) exporté(s)\n" +
+                        $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                        "Succès", MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    ShowModernMessageBox($"❌ Erreur lors de l'export CSV:\n\n{ex.Message}",
+                        "Erreur", MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void LoadFilons(MineralType? filter = null)
+        {
+            _currentFilons = filter.HasValue
+                ? _dataService.FilterByMainMineral(filter.Value)
+                : _dataService.GetAllFilons();
+
+            // Normaliser et synchroniser les coordonnées pour tous les filons
+            bool hasChanges = false;
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.HasCoordinates())
+                {
+                    // Sauvegarder les valeurs originales pour détecter les changements
+                    var origLat = filon.Latitude;
+                    var origLon = filon.Longitude;
+
+                    filon.NormalizeAndSyncCoordinates();
+
+                    // Si les coordonnées GPS ont été mises à jour, sauvegarder
+                    if ((origLat != filon.Latitude || origLon != filon.Longitude) &&
+                        filon.Latitude.HasValue && filon.Longitude.HasValue)
+                    {
+                        _dataService.UpdateFilon(filon);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            UpdateFilonComboBox();
+            UpdateMapMarkers();
+            // Mise à jour du texte du bouton avec le nombre de filons
+            btnViewFiches.Text = $"📋 Fiche ({_currentFilons.Count})";
+
+            // Informer l'utilisateur si des coordonnées ont été mises à jour
+            if (hasChanges)
+            {
+                ShowModernMessageBox("📍 Certaines coordonnées GPS ont été automatiquement mises à jour.",
+                    "Synchronisation", MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFilonComboBox()
+        {
+            var selectedFilon = cmbSelectFilon.SelectedItem as FilonComboItem;
+
+            cmbSelectFilon.Items.Clear();
+            cmbSelectFilon.Items.Add(new FilonComboItem(null, "-- Sélectionner un filon --"));
+
+            foreach (var filon in _currentFilons.OrderBy(f => f.Nom))
+            {
+                var item = new FilonComboItem(filon,
+                    $"{filon.Nom} ({MineralColors.GetDisplayName(filon.MatierePrincipale)})" +
+                    (filon.HasCoordinates() ? " [GPS]" : ""));
+                cmbSelectFilon.Items.Add(item);
+            }
+
+            if (selectedFilon?.Filon != null)
+            {
+                var itemToSelect = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == selectedFilon.Filon.Id);
+                cmbSelectFilon.SelectedItem = itemToSelect ?? cmbSelectFilon.Items[0];
+            }
+            else
+            {
+                cmbSelectFilon.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateMapMarkers()
+        {
+            _markersOverlay.Markers.Clear();
+
+            foreach (var filon in _currentFilons)
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                    // Utilisation du nouveau marker cristal hexagonal
+                    var marker = new FilonCrystalMarker(point, filon, color)
+                    {
+                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                        Tag = filon
+                    };
+
+                    _markersOverlay.Markers.Add(marker);
+                }
+            }
+
+            gMapControl.Refresh();
+        }
+
+        private void ChangeMapType(Models.MapType mapType)
+        {
+            try
+            {
+                _mapProviderService.SetMapType(mapType);
+                ShowModernMessageBox($"Carte changée: {mapType.GetDisplayName()}",
+                    "Carte", MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur changement carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private string GetStatusSummary(FilonStatus status)
+        {
+            if (status == FilonStatus.Aucun)
+                return "Aucun";
+
+            var statuses = new List<string>();
+            foreach (FilonStatus value in Enum.GetValues<FilonStatus>())
+            {
+                if (value != FilonStatus.Aucun && status.HasFlag(value))
+                {
+                    statuses.Add(value.GetDisplayName());
+                }
+            }
+
+            return string.Join(", ", statuses);
+        }
+
+        private async void BtnAddFilon_Click(object? sender, EventArgs e)
+        {
+            // Si en mode placement de pin, annuler
+            if (_isAddPinMode)
+            {
+                ExitAddPinMode();
+                return;
+            }
+
+            // Demander à l'utilisateur comment il veut créer le filon
+            var choiceForm = new Form
+            {
+                Text = "Création d'un nouveau filon",
+                Size = new Size(500, 250),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = Color.FromArgb(25, 25, 35),
+                ForeColor = Color.White",

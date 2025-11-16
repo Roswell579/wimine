@@ -1,0 +1,130 @@
+﻿# ?? QUICK START - Test du Service de Routing
+
+## ? Méthode la plus rapide (30 secondes)
+
+### étape 1 : Activer le test
+Ouvrez `Program.cs` et é la ligne 11, modifiez :
+
+**AVANT :**
+```csharp
+// QuickTestRouting().Wait();
+// return;
+```
+
+**APRéS :**
+```csharp
+QuickTestRouting().Wait();
+return;
+```
+
+### étape 2 : Lancer
+```bash
+dotnet run
+```
+
+### étape 3 : Observer
+Vous devriez voir :
+```
+?????????????????????????????????????????????
+?   TEST RAPIDE - SERVICE DE ROUTING        ?
+?????????????????????????????????????????????
+
+?? Calcul d'itinéraire : Toulon ? Nice
+?????????????????????????????????????????
+? Appel API OSRM... OK ?
+
+? Distance: 145.23 km
+? Durée  : 1h32
+? Points : 1453 coordonnées
+? Instructions: 45
+
+?? Premiéres instructions:
+   1. ?? Boulevard Maréchal Leclerc (0.3 km)
+   2. ?? Avenue de la République (1.2 km)
+   3. ?? A57 (15.8 km)
+
+?????????????????????????????????????????????
+?          ? TEST RéUSSI !                 ?
+?????????????????????????????????????????????
+```
+
+### étape 4 : Restaurer
+Remettre les commentaires dans `Program.cs` :
+```csharp
+// QuickTestRouting().Wait();
+// return;
+```
+
+---
+
+## ?? Alternative : Interface Graphique
+
+Si vous préférez une interface visuelle :
+
+1. Dans `Program.cs`, ligne 15, changez :
+   ```csharp
+   TestRouteService();
+   return;
+   ```
+
+2. Lancez : `dotnet run`
+
+3. Vous obtiendrez une fenétre oé vous pouvez :
+   - Saisir des coordonnées personnalisées
+   - Choisir le type de transport (voiture, vélo, é pied)
+   - Voir les résultats formatés
+   - Lire les instructions de navigation
+
+---
+
+## ?? Coordonnées de test pratiques
+
+### Var (83)
+```
+Toulon    : 43.1242, 5.9280
+La Garde  : 43.1266, 5.9987
+Hyéres    : 43.1204, 6.1283
+Saint-Raphaél : 43.4253, 6.7674
+```
+
+### Région PACA
+```
+Nice      : 43.7102, 7.2620
+Marseille : 43.2965, 5.3698
+Aix       : 43.5297, 5.4474
+Cannes    : 43.5528, 7.0174
+```
+
+---
+
+## ? Troubleshooting
+
+### "No route found"
+?? Vérifiez que les coordonnées sont valides
+
+### Timeout / Pas de réponse
+?? Vérifiez votre connexion Internet
+?? L'API OSRM est peut-étre temporairement indisponible
+
+### Erreur de compilation
+?? Faites `dotnet build` pour voir les détails
+
+---
+
+## ?? Documentation compléte
+
+Pour plus de détails, consultez :
+- `ROUTING_TESTS.md` - Guide complet des tests
+- `ROUTING_RECAP.md` - Récapitulatif technique
+
+---
+
+## ? Checklist
+
+- [ ] J'ai activé le test dans Program.cs
+- [ ] J'ai lancé `dotnet run`
+- [ ] J'ai vu les résultats du test
+- [ ] Le test affiche "? TEST RéUSSI !"
+- [ ] J'ai restauré Program.cs é l'état normal
+
+**Une fois validé, le service est prét é étre intégré dans Form1 !** ??

@@ -1,0 +1,373 @@
+﻿using GMap.NET;
+using GMap.NET.MapProviders;
+using GMap.NET.WindowsForms;
+using GMap.NET.WindowsForms.Markers;
+using wmine.Forms;
+using wmine.Models;
+using wmine.Services;
+using wmine.UI;
+
+namespace wmine
+{
+    public partial class Form1 : Form
+    {
+        private readonly FilonDataService _dataService;
+        private readonly PdfExportService _pdfService;
+        private readonly EmailService _emailService;
+        private readonly MapProviderService _mapProviderService;
+        private readonly ThemeService _themeService;
+        private GMapOverlay _markersOverlay;
+        private List<Filon> _currentFilons;
+        private bool _isAddPinMode = false;
+        private GMapOverlay _tempMarkerOverlay;
+
+        public Form1()
+        {
+            _themeService = new ThemeService();
+            _dataService = new FilonDataService();  // ⭐ DOIT ÊTRE INITIALISÉ AVANT InitializeComponent()
+
+            InitializeComponent();
+
+            // ⭐ Créer ImportPanel maintenant que _dataService est initialisé
+            var importPanel = new Forms.ImportPanel(_dataService);
+            tabPageImport.Controls.Add(importPanel);
+
+            _pdfService = new PdfExportService();
+            _emailService = new EmailService(_pdfService);
+            _markersOverlay = new GMapOverlay("filons");
+            _tempMarkerOverlay = new GMapOverlay("temp");
+            _currentFilons = new List<Filon>();
+            _mapProviderService = new MapProviderService(gMapControl);
+
+            // ⭐ Charger les données lourdes après l'affichage du formulaire
+            this.Load += Form1_LoadAsync;
+        }
+
+        /// <summary>
+        /// Chargement asynchrone des données lourdes pour accélérer le démarrage
+        /// </summary>
+        private async void Form1_LoadAsync(object? sender, EventArgs e)
+        {
+            var originalText = this.Text;
+            this.Text = "⏳ Chargement...";
+
+            // Afficher le formulaire vide immédiatement
+            await Task.Delay(50);
+
+            // Charger automatiquement les mines historiques si base vide
+            await Task.Run(() =>
+            {
+                var startupLoader = new StartupDataLoader(_dataService);
+                startupLoader.LoadInitialDataIfEmpty();
+            });
+
+            // Charger la carte et les données en arrière-plan
+            await Task.Run(() =>
+            {
+                this.Invoke(InitializeMap);
+                this.Invoke(() => LoadFilons());
+            });
+
+            // Appliquer les effets visuels
+            await ApplyGlassEffects();
+
+            this.Text = originalText;
+        }
+
+        private async Task ApplyGlassEffects()
+        {
+            await Task.Delay(100);
+            if (Environment.OSVersion.Version.Major >= 10)
+            {
+                GlassEffects.EnableBlur(this, 220);
+            }
+            await GlassEffects.FadeIn(this, 400);
+        }
+
+        private void InitializeMap()
+        {
+            try
+            {
+                // ⭐ Activer le cache pour accélérer les chargements suivants
+                GMap.NET.GMaps.Instance.Mode = GMap.NET.AccessMode.ServerAndCache;
+
+                var cacheFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "wmine", "MapCache");
+
+                if (!Directory.Exists(cacheFolder))
+                {
+                    Directory.CreateDirectory(cacheFolder);
+                }
+
+                GMap.NET.GMaps.Instance.PrimaryCache = new GMap.NET.CacheProviders.SQLitePureImageCache
+                {
+                    CacheLocation = cacheFolder
+                };
+
+                gMapControl.MapProvider = GMapProviders.OpenStreetMap;
+                gMapControl.Position = new PointLatLng(43.4, 6.3);
+                gMapControl.MinZoom = 5;
+                gMapControl.MaxZoom = 18;
+                gMapControl.Zoom = 10;
+                gMapControl.ShowCenter = false;
+                gMapControl.DragButton = MouseButtons.Left;
+                gMapControl.EmptyTileColor = Color.FromArgb(30, 30, 40);
+                gMapControl.BackColor = Color.FromArgb(25, 25, 35);
+                gMapControl.Overlays.Add(_markersOverlay);
+                gMapControl.Overlays.Add(_tempMarkerOverlay);
+                gMapControl.MouseClick += GMapControl_MouseClick;
+                gMapControl.OnMarkerClick += GMapControl_OnMarkerClick;
+                gMapControl.MouseMove += GMapControl_MouseMove;
+
+                _themeService.ApplyTheme(this, _themeService.CurrentTheme);
+            }
+            catch (Exception ex)
+            {
+                ShowModernMessageBox($"Erreur lors de l'initialisation de la carte: {ex.Message}",
+                    "Erreur", MessageBoxIcon.Error);
+            }
+        }
+
+        private void GMapControl_MouseClick(object? sender, MouseEventArgs e)
+        {
+            if (_isAddPinMode && e.Button == MouseButtons.Left)
+            {
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                CreateFilonAtPosition(point.Lat, point.Lng);
+                ExitAddPinMode();
+                return;
+            }
+
+            if (e.Button == MouseButtons.Right)
+            {
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                var contextMenu = new ContextMenuStrip();
+                contextMenu.BackColor = Color.FromArgb(35, 40, 50);
+                contextMenu.ForeColor = Color.White;
+                contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+
+                var menuAddFilon = new ToolStripMenuItem("📌 Nouveau filon ici");
+                menuAddFilon.Click += (s, args) => CreateFilonAtPosition(point.Lat, point.Lng);
+
+                var menuCopyCoords = new ToolStripMenuItem($"📋 Copier coordonnées");
+                menuCopyCoords.Click += (s, args) =>
+                {
+                    var coords = $"Lat: {point.Lat:F6}°, Lon: {point.Lng:F6}°";
+                    Clipboard.SetText(coords);
+                    ShowModernMessageBox($"Coordonnées copiées:\n{coords}", "Info", MessageBoxIcon.Information);
+                };
+
+                contextMenu.Items.Add(menuAddFilon);
+                contextMenu.Items.Add(new ToolStripSeparator());
+                contextMenu.Items.Add(menuCopyCoords);
+                contextMenu.Show(gMapControl, e.Location);
+            }
+        }
+
+        private void GMapControl_OnMarkerClick(GMapMarker item, MouseEventArgs e)
+        {
+            if (item.Tag is Filon filon)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    if (e.Clicks == 2)
+                    {
+                        EditFilon(filon);
+                    }
+                    else
+                    {
+                        var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                            .FirstOrDefault(i => i.Filon?.Id == filon.Id);
+                        if (comboItem != null)
+                        {
+                            cmbSelectFilon.SelectedItem = comboItem;
+                        }
+                    }
+                }
+                else if (e.Button == MouseButtons.Right)
+                {
+                    ShowMarkerContextMenu(filon, e.Location);
+                }
+            }
+        }
+
+        private void ShowMarkerContextMenu(Filon filon, Point location)
+        {
+            var contextMenu = new ContextMenuStrip();
+            contextMenu.BackColor = Color.FromArgb(35, 40, 50);
+            contextMenu.ForeColor = Color.White;
+            contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
+
+            var menuEdit = new ToolStripMenuItem($"✏️ Éditer '{filon.Nom}'");
+            menuEdit.Click += (s, e) => EditFilon(filon);
+
+            var menuDelete = new ToolStripMenuItem($"🗑️ Supprimer '{filon.Nom}'");
+            menuDelete.Click += (s, e) => DeleteFilon(filon);
+
+            var menuExport = new ToolStripMenuItem($"📄 Exporter en PDF");
+            menuExport.Click += (s, e) => ExportFilonToPdf(filon);
+
+            var menuCopyCoords = new ToolStripMenuItem($"📋 Copier coordonnées");
+            menuCopyCoords.Click += (s, e) =>
+            {
+                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                {
+                    var coords = $"Lat: {filon.Latitude:F6}°, Lon: {filon.Longitude:F6}°";
+                    Clipboard.SetText(coords);
+                    ShowModernMessageBox($"Coordonnées copiées:\n{coords}", "Info", MessageBoxIcon.Information);
+                }
+            };
+
+            contextMenu.Items.Add(menuEdit);
+            contextMenu.Items.Add(menuDelete);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(menuExport);
+            contextMenu.Items.Add(menuCopyCoords);
+            contextMenu.Show(gMapControl, location);
+        }
+
+        private void GMapControl_MouseMove(object? sender, MouseEventArgs e)
+        {
+            if (_isAddPinMode)
+            {
+                _tempMarkerOverlay.Markers.Clear();
+                var point = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                var tempMarker = new GMarkerGoogle(point, GMarkerGoogleType.red_pushpin)
+                {
+                    ToolTipText = $"Cliquez pour placer le filon ici\nLat: {point.Lat:F6}°\nLon: {point.Lng:F6}°"
+                };
+                _tempMarkerOverlay.Markers.Add(tempMarker);
+                gMapControl.Cursor = Cursors.Cross;
+                gMapControl.Refresh();
+                return;
+            }
+
+            var marker = _markersOverlay.Markers.FirstOrDefault(m =>
+            {
+                var markerLocal = gMapControl.FromLatLngToLocal(m.Position);
+                var markerRect = new Rectangle(
+                    (int)(markerLocal.X - 20),
+                    (int)(markerLocal.Y - 50),
+                    40, 50
+                );
+                return markerRect.Contains(e.Location);
+            });
+
+            gMapControl.Cursor = marker != null ? Cursors.Hand : Cursors.Default;
+        }
+
+        private void EnterAddPinMode()
+        {
+            _isAddPinMode = true;
+            btnAddFilon.Text = "❌ Annuler";
+            btnAddFilon.BackColor = Color.FromArgb(244, 67, 54);  // ✅ CHANGÉ: BackColor au lieu de BaseColor
+            gMapControl.Cursor = Cursors.Cross;
+            gMapControl.DragButton = MouseButtons.None;
+            ShowModernMessageBox("📍 Mode placement de pin activé\n\nCliquez sur la carte pour placer un nouveau filon.",
+                "Mode Placement", MessageBoxIcon.Information);
+        }
+
+        private void ExitAddPinMode()
+        {
+            _isAddPinMode = false;
+            _tempMarkerOverlay.Markers.Clear();
+            btnAddFilon.Text = "+ Nouveau";
+            btnAddFilon.BackColor = Color.FromArgb(0, 150, 136);  // ✅ CHANGÉ: BackColor au lieu de BaseColor
+            gMapControl.Cursor = Cursors.Default;
+            gMapControl.DragButton = MouseButtons.Left;
+            gMapControl.Refresh();
+        }
+
+        private async void CreateFilonAtPosition(double latitude, double longitude)
+        {
+            var newFilon = new Filon
+            {
+                Latitude = latitude,
+                Longitude = longitude
+            };
+
+            var (x, y) = CoordinateConverter.WGS84ToLambert3(latitude, longitude);
+            newFilon.LambertX = x;
+            newFilon.LambertY = y;
+
+            using var form = new FilonEditForm(newFilon, _dataService);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.AddFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+
+                await Task.Delay(100);
+                var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == form.Filon.Id);
+                if (comboItem != null)
+                {
+                    cmbSelectFilon.SelectedItem = comboItem;
+                }
+
+                ShowModernMessageBox("✅ Filon créé avec succès!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        private async void CreateFilonWithoutCoordinates()
+        {
+            var newFilon = new Filon
+            {
+                Nom = "Nouveau filon",
+                MatierePrincipale = MineralType.Fer
+            };
+
+            using var form = new FilonEditForm(newFilon, _dataService);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.AddFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+
+                await Task.Delay(100);
+                var comboItem = cmbSelectFilon.Items.Cast<FilonComboItem>()
+                    .FirstOrDefault(i => i.Filon?.Id == form.Filon.Id);
+                if (comboItem != null)
+                {
+                    cmbSelectFilon.SelectedItem = comboItem;
+                }
+
+                ShowModernMessageBox("✅ Filon créé avec succès!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        private void EditFilon(Filon filon)
+        {
+            using var form = new FilonEditForm(filon, _dataService);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                _dataService.UpdateFilon(form.Filon);
+                LoadFilons(GetSelectedFilter());
+                ShowModernMessageBox("✅ Filon mis à jour!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        private void DeleteFilon(Filon filon)
+        {
+            if (ShowModernConfirmation($"Êtes-vous sûr de vouloir supprimer le filon '{filon.Nom}' ?",
+                "Confirmation"))
+            {
+                _dataService.DeleteFilon(filon.Id);
+                LoadFilons(GetSelectedFilter());
+                ShowModernMessageBox("✅ Filon supprimé!", "Succès", MessageBoxIcon.Information);
+            }
+        }
+
+        private void ExportFilonToPdf(Filon filon)
+        {
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "PDF|*.pdf",
+                FileName = $"Filon_{filon.Nom}.pdf"
+            };
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    _pdfService.ExportFilonToPdf(filon, sfd.FileName);
+                    ShowModernMessageBox("✅ Export PDF réussi!", "Succe

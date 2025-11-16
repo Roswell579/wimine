@@ -1,0 +1,41 @@
+// Ajoutez cette méthode à votre classe Form1.cs pour intégrer la restriction de zone Lambert III Sud
+
+// 1. Ajoutez ce champ privé dans Form1.cs :
+private MapBoundsRestrictor? _mapBoundsRestrictor;
+
+// 2. Dans InitializeMap(), après la configuration de gMapControl, ajoutez :
+_mapBoundsRestrictor = new MapBoundsRestrictor(gMapControl);
+_mapBoundsRestrictor.CenterOnZone(); // Centre la carte sur la zone Lambert III Sud
+
+// 3. Modifiez l'événement OnPositionChanged dans InitializeComponent() :
+// Avant :
+gMapControl.OnPositionChanged += (point) =>
+{
+    _floatingPosition.UpdatePosition(point.Lat, point.Lng, gMapControl.Zoom);
+    _floatingScale.UpdateScale(gMapControl.Zoom, point.Lat);
+};
+
+// Après :
+gMapControl.OnPositionChanged += (point) =>
+{
+    _mapBoundsRestrictor?.RestrictMapBounds(); // Restreindre la position
+    _floatingPosition.UpdatePosition(point.Lat, point.Lng, gMapControl.Zoom);
+    _floatingScale.UpdateScale(gMapControl.Zoom, point.Lat);
+};
+
+// 4. Optionnel - Ajouter un bouton pour activer/désactiver la restriction :
+// Dans Form1.Designer.cs, ajoutez un bouton dans la toolbar :
+var btnToggleBounds = new ToolStripButton("Limiter zone");
+btnToggleBounds.CheckOnClick = true;
+btnToggleBounds.Checked = true;
+btnToggleBounds.Click += (s, e) =>
+{
+    if (_mapBoundsRestrictor != null)
+    {
+        _mapBoundsRestrictor.RestrictionEnabled = btnToggleBounds.Checked;
+    }
+};
+// Ajoutez-le à toolStrip1.Items
+
+// 5. N'oubliez pas d'ajouter le using en haut de Form1.cs :
+using wmine.Services;

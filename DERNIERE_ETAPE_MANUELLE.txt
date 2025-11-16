@@ -1,0 +1,78 @@
+# ?? DERNIÈRE ÉTAPE - Intégration manuelle dans Form1.cs
+
+## ?? 3 modifications à faire MANUELLEMENT
+
+### 1?? Ajouter le champ (ligne ~17)
+
+**Chercher** dans Form1.cs :
+```csharp
+private readonly MapProviderService _mapProviderService;
+private GMapOverlay _markersOverlay;
+```
+
+**Ajouter APRÈS** :
+```csharp
+private readonly ThemeService _themeService;
+```
+
+---
+
+### 2?? Initialiser dans le constructeur (ligne ~25)
+
+**Chercher** :
+```csharp
+public Form1()
+{
+    InitializeComponent();
+```
+
+**Remplacer par** :
+```csharp
+public Form1()
+{
+    _themeService = new ThemeService();  // ? AJOUTER CETTE LIGNE
+    
+    InitializeComponent();
+```
+
+---
+
+### 3?? Appliquer le thème au démarrage (ligne ~58)
+
+**Chercher** dans la méthode `Form1_LoadAsync` :
+```csharp
+await ApplyGlassEffects();
+
+this.Text = originalText;
+```
+
+**Remplacer par** :
+```csharp
+await ApplyGlassEffects();
+
+_themeService.ApplyTheme(this, _themeService.CurrentTheme);  // ? AJOUTER CETTE LIGNE
+
+this.Text = originalText;
+```
+
+---
+
+## ? Après ces modifications
+
+1. **Compiler** : `dotnet build` ?
+2. **Lancer** : `F5` ou `dotnet run` ??
+3. **Tester** : Aller dans Paramètres ? Changer de thème ??
+
+---
+
+## ?? Les 5 thèmes seront disponibles !
+
+- ?? Dark (Sombre) - Par défaut
+- ?? Light (Clair)  
+- ?? Blue (Bleu)
+- ?? Green (Vert)
+- ?? Mineral (Minéral)
+
+---
+
+**C'est la DERNIÈRE étape pour 100% de la refonte !** ??
