@@ -48,8 +48,14 @@ namespace wmine
         private bool _isTopBarVisible = true;
         private Button _btnToggleTabs;
         private bool _areTabsVisible = true;
-        private WeatherWidget _weatherWidget; // ? NOUVEAU
         private FloatingToolsPanel _floatingToolsPanel; // ?? NOUVEAU
+
+        // Boutons carte + ToolTip
+        private Button btnRoute;
+        private Button btnRotateMap;
+        private Button btnResetOrientation;
+        private ToolTip tooltipMain;
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -359,16 +365,19 @@ namespace wmine
             };
 
             btnZoomIn = new ToolStripButton("Zoom +");
-            btnZoomIn.Click += (s, e) => { if (gMapControl.Zoom < gMapControl.MaxZoom) gMapControl.Zoom++; };
+            btnZoomIn.Click += (s, e) => { if (gMapControl != null && gMapControl.Zoom < gMapControl.MaxZoom) gMapControl.Zoom++; };
 
             btnZoomOut = new ToolStripButton("Zoom -");
-            btnZoomOut.Click += (s, e) => { if (gMapControl.Zoom > gMapControl.MinZoom) gMapControl.Zoom--; };
+            btnZoomOut.Click += (s, e) => { if (gMapControl != null && gMapControl.Zoom > gMapControl.MinZoom) gMapControl.Zoom--; };
 
             btnResetZoom = new ToolStripButton("Reinitialiser");
             btnResetZoom.Click += (s, e) => 
             { 
-                gMapControl.Position = new GMap.NET.PointLatLng(43.4, 6.3);
-                gMapControl.Zoom = 10;
+                if (gMapControl != null)
+                {
+                    gMapControl.Position = new GMap.NET.PointLatLng(43.4, 6.3);
+                    gMapControl.Zoom = 10;
+                }
             };
 
             btnFullScreen = new ToolStripButton("Plein ecran");
@@ -469,135 +478,92 @@ namespace wmine
             gMapControl.MouseMove += GMapControl_MouseMove_Rotation;
             gMapControl.MouseUp += GMapControl_MouseUp_Rotation;
 
-            // Bouton rotation 90°
-            var btnRotateMap = new Button
+            // Bouton Rotation 90°
+            btnRotateMap = new Button
             {
-                Text = "",
+                Text = "90°",
                 Width = 50,
                 Height = 50,
                 Location = new Point(20, 220),
                 BackColor = Color.FromArgb(156, 39, 176),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Emoji", 18),
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             btnRotateMap.FlatAppearance.BorderSize = 0;
-            // Use generated icon for rotation
-            try
-            {
-                btnRotateMap.Image = wmine.UI.IconFactory.CreateGlyphIcon("↻", 28, Color.White);
-                btnRotateMap.ImageAlign = ContentAlignment.MiddleCenter;
-            }
-            catch { btnRotateMap.Text = "↻"; }
-            btnRotateMap.Click += (s, e) => { gMapControl.Bearing = (gMapControl.Bearing + 90) % 360; };
+            btnRotateMap.Click += (s, e) => { gMapControl.Bearing = (gMapControl.Bearing + 90f) % 360f; };
             panelMap.Controls.Add(btnRotateMap);
             btnRotateMap.BringToFront();
 
-            // Bouton reset orientation
-            var btnResetOrientation = new Button
+            // Bouton Reset Orientation (Nord)
+            btnResetOrientation = new Button
             {
-                Text = "",
+                Text = "N",
                 Width = 50,
                 Height = 50,
                 Location = new Point(80, 220),
                 BackColor = Color.FromArgb(33, 150, 243),
-                ForeColor = Color.White,
+                ForeColor = Color.Black,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Emoji", 18),
+                Font = new Font("Segoe UI", 16, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             btnResetOrientation.FlatAppearance.BorderSize = 0;
-            try
-            {
-                btnResetOrientation.Image = wmine.UI.IconFactory.CreateGlyphIcon("🧭", 28, Color.White);
-                btnResetOrientation.ImageAlign = ContentAlignment.MiddleCenter;
-            }
-            catch { btnResetOrientation.Text = "N"; }
             btnResetOrientation.Click += (s, e) => { gMapControl.Bearing = 0f; };
             panelMap.Controls.Add(btnResetOrientation);
             btnResetOrientation.BringToFront();
 
-            // Bouton Itinéraire (route)
-            var btnRoute = new Button
+            // Bouton Itinéraire
+            btnRoute = new Button
             {
-                Text = "",
+                Text = "🧭",
                 Width = 50,
                 Height = 50,
                 Location = new Point(140, 220),
                 BackColor = Color.FromArgb(255, 152, 0),
-                ForeColor = Color.White,
+                ForeColor = Color.Black,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Emoji", 18),
+                Font = new Font("Segoe UI Emoji", 20, FontStyle.Regular),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             btnRoute.FlatAppearance.BorderSize = 0;
-            try
-            {
-                btnRoute.Image = wmine.UI.IconFactory.CreateGlyphIcon("🧭", 28, Color.White); // reuse compass for route
-                btnRoute.ImageAlign = ContentAlignment.MiddleCenter;
-            }
-            catch { btnRoute.Text = "R"; }
             btnRoute.Click += BtnRoute_Click;
             panelMap.Controls.Add(btnRoute);
             btnRoute.BringToFront();
 
-            // ??? WIDGET MÉTÉO (sous les boutons) ???
-            _weatherWidget = new WeatherWidget
-            {
-                Location = new Point(20, 280),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
-            panelMap.Controls.Add(_weatherWidget);
-            _weatherWidget.BringToFront();
-
-            // ??? PANNEAU OUTILS (sous le widget météo) ???
-            _floatingToolsPanel = new FloatingToolsPanel
-            {
-                Location = new Point(20, 470), // Sous le widget météo
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
-            _floatingToolsPanel.MeasureDistanceClicked += FloatingToolsPanel_MeasureDistanceClicked;
-            _floatingToolsPanel.ImportPhotosGPSClicked += FloatingToolsPanel_ImportPhotosGPSClicked;
-            _floatingToolsPanel.FindNearbyFilonsClicked += FloatingToolsPanel_FindNearbyFilonsClicked;
-            _floatingToolsPanel.DrawZoneClicked += FloatingToolsPanel_DrawZoneClicked;
-            _floatingToolsPanel.ExportKMZClicked += FloatingToolsPanel_ExportKMZClicked;
-            panelMap.Controls.Add(_floatingToolsPanel);
-            _floatingToolsPanel.BringToFront();
-
-            // Bouton toggle TopBar
+            // Boutons flottants: création AVANT l'utilisation dans les ToolTips
             _btnToggleTopBar = new Button
             {
                 Text = "CACHER",
                 Width = 120,
-                Height = 30,
+                Height = 40,
                 Location = new Point(this.ClientSize.Width / 2 - 60, 140),
-                BackColor = Color.FromArgb(0, 150, 136),
+                BackColor = Color.FromArgb(40, 45, 55),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Emoji", 9, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.None
+                Anchor = AnchorStyles.Top
             };
             _btnToggleTopBar.FlatAppearance.BorderSize = 0;
             _btnToggleTopBar.Click += BtnToggleTopBar_Click;
             panelMap.Controls.Add(_btnToggleTopBar);
             _btnToggleTopBar.BringToFront();
 
-            // Bouton toggle Tabs
             _btnToggleTabs = new Button
             {
                 Text = "Masquer",
                 Width = 120,
-                Height = 30,
+                Height = 40,
                 Location = new Point(this.ClientSize.Width - 140, this.ClientSize.Height - 110),
-                BackColor = Color.FromArgb(0, 150, 136),
+                BackColor = Color.FromArgb(40, 45, 55),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Emoji", 9, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
@@ -606,20 +572,19 @@ namespace wmine
             panelMap.Controls.Add(_btnToggleTabs);
             _btnToggleTabs.BringToFront();
 
-            // Tooltips pour les boutons
-            var tooltipMain = new ToolTip(this.components)
+            // ToolTips après la création des boutons
+            tooltipMain = new ToolTip(this.components)
             {
                 InitialDelay = 300,
                 AutoPopDelay = 5000,
                 ReshowDelay = 100,
                 ShowAlways = true
             };
-
             tooltipMain.SetToolTip(btnRotateMap, "Rotation 90° (ou Ctrl+Glisser sur la carte)");
             tooltipMain.SetToolTip(btnResetOrientation, "Réinitialiser l'orientation Nord (le zoom ne change pas)");
             tooltipMain.SetToolTip(btnRoute, "Calculer un itinéraire vers un filon");
-            tooltipMain.SetToolTip(_btnToggleTopBar, "Afficher/masquer le panneau de commandes");
-            tooltipMain.SetToolTip(_btnToggleTabs, "Afficher/masquer les onglets");
+            if (_btnToggleTopBar != null) tooltipMain.SetToolTip(_btnToggleTopBar, "Afficher/masquer le panneau de commandes");
+            if (_btnToggleTabs != null) tooltipMain.SetToolTip(_btnToggleTabs, "Afficher/masquer les onglets");
             tooltipMain.SetToolTip(btnAddFilon, "Créer un nouveau filon minier");
             tooltipMain.SetToolTip(btnEditFilon, "Modifier le filon sélectionné");
             tooltipMain.SetToolTip(btnDeleteFilon, "Supprimer définitivement le filon");

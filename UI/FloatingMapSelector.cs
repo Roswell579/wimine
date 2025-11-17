@@ -1,39 +1,52 @@
-﻿using System.Drawing.Drawing2D;
+﻿using wmine.Models;
 
 namespace wmine.UI
 {
     /// <summary>
-    /// Contrôle flottant de sélection de carte qui s'affiche sur la carte
+    /// Contrôle flottant de sélection de type de carte (aligné à droite).
     /// </summary>
     public class FloatingMapSelector : Panel
     {
         private ComboBox _cmbMapType;
-        private bool _isExpanded = false;
+        private bool _isExpanded;
         private Button _btnToggle;
         private Panel _contentPanel;
+
         private const int CollapsedWidth = 50;
         private const int ExpandedWidth = 280;
 
-        public event EventHandler<Models.MapType>? MapTypeChanged;
+        // Alignement
+        private bool _alignRight = true;
+        private int _topMargin = 20;
 
-        public Models.MapType CurrentMapType { get; private set; } = Models.MapType.OpenStreetMap;
+        public event EventHandler<MapType>? MapTypeChanged;
+        public MapType CurrentMapType { get; private set; } = MapType.OpenStreetMap;
+
+        public bool AlignRight
+        {
+            get => _alignRight;
+            set { _alignRight = value; RealignRight(); }
+        }
+
+        public int TopMargin
+        {
+            get => _topMargin;
+            set { _topMargin = value; RealignRight(); }
+        }
 
         public FloatingMapSelector()
         {
-            // Configuration pour assurer la visibilité avec transparence
-            this.SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
             InitializeComponent();
         }
 
         private void InitializeComponent()
         {
-            // Panel principal
-            this.Width = CollapsedWidth;
-            this.Height = 50;
-            this.BackColor = Color.FromArgb(220, 30, 35, 45); // Semi-transparent
-            this.Cursor = Cursors.Hand;
+            Width = CollapsedWidth;
+            Height = 50;
+            BackColor = Color.FromArgb(220, 30, 35, 45);
+            Cursor = Cursors.Hand;
 
-            // Bouton toggle avec icône Segoe MDL2 Assets
             _btnToggle = new Button
             {
                 Width = 40,
@@ -43,14 +56,13 @@ namespace wmine.UI
                 BackColor = Color.Transparent,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Emoji", 18),
-                Text = "\uE707", // Icône carte moderne (Map)
+                Text = "\uE707", // Icône carte
                 Cursor = Cursors.Hand
             };
             _btnToggle.FlatAppearance.BorderSize = 0;
             _btnToggle.Click += BtnToggle_Click;
-            this.Controls.Add(_btnToggle);
+            Controls.Add(_btnToggle);
 
-            // Panel de contenu (caché par défaut)
             _contentPanel = new Panel
             {
                 Location = new Point(55, 5),
@@ -60,7 +72,6 @@ namespace wmine.UI
                 Visible = false
             };
 
-            // Label
             var lblTitle = new Label
             {
                 Text = "Type:",
@@ -72,7 +83,6 @@ namespace wmine.UI
             };
             _contentPanel.Controls.Add(lblTitle);
 
-            // ComboBox
             _cmbMapType = new ComboBox
             {
                 Location = new Point(50, 8),
@@ -86,72 +96,64 @@ namespace wmine.UI
             _cmbMapType.SelectedIndexChanged += CmbMapType_SelectedIndexChanged;
             _contentPanel.Controls.Add(_cmbMapType);
 
-            this.Controls.Add(_contentPanel);
+            Controls.Add(_contentPanel);
 
             LoadMapTypes();
         }
 
         private void LoadMapTypes()
         {
-            var mapTypes = new List<MapTypeItem>();
-
-            foreach (Models.MapType mapType in Enum.GetValues(typeof(Models.MapType)))
+            var list = new List<MapTypeItem>();
+            foreach (MapType mapType in Enum.GetValues(typeof(MapType)))
             {
-                // Filtrer les cartes topographiques non fonctionnelles
-                if (mapType == Models.MapType.OpenTopoMap ||
-                    mapType == Models.MapType.EsriWorldTopo)
-                {
+                if (mapType == MapType.OpenTopoMap || mapType == MapType.EsriWorldTopo)
                     continue;
-                }
 
-                mapTypes.Add(new MapTypeItem
+                list.Add(new MapTypeItem
                 {
                     Type = mapType,
                     DisplayName = GetShortDisplayName(mapType)
                 });
             }
 
-            _cmbMapType.DataSource = mapTypes;
+            _cmbMapType.DataSource = list;
             _cmbMapType.DisplayMember = "DisplayName";
             _cmbMapType.ValueMember = "Type";
-            _cmbMapType.SelectedValue = Models.MapType.OpenStreetMap;
+            _cmbMapType.SelectedValue = MapType.OpenStreetMap;
         }
 
-        private string GetShortDisplayName(Models.MapType mapType)
-        {
-            return mapType switch
+        private string GetShortDisplayName(MapType mapType) =>
+            mapType switch
             {
-                Models.MapType.OpenStreetMap => "OSM Standard",
-                Models.MapType.GoogleMaps => "Google Maps",
-                Models.MapType.GoogleTerrain => "Google Terrain",
-                Models.MapType.EsriSatellite => "Esri Satellite",
-                Models.MapType.BingSatellite => "Bing Satellite",
-                Models.MapType.GoogleSatellite => "Google Satellite",
-                Models.MapType.GoogleHybrid => "Google Hybride",
+                MapType.OpenStreetMap => "OSM Standard",
+                MapType.GoogleMaps => "Google Maps",
+                MapType.GoogleTerrain => "Google Terrain",
+                MapType.EsriSatellite => "Esri Satellite",
+                MapType.BingSatellite => "Bing Satellite",
+                MapType.GoogleSatellite => "Google Satellite",
+                MapType.GoogleHybrid => "Google Hybride",
                 _ => mapType.ToString()
             };
-        }
 
         private void BtnToggle_Click(object? sender, EventArgs e)
         {
             _isExpanded = !_isExpanded;
-
             if (_isExpanded)
             {
-                // Expand
-                this.Width = ExpandedWidth;
+                Width = ExpandedWidth;
                 _contentPanel.Visible = true;
-                _btnToggle.Text = "\uE00F"; // Icône flèche gauche moderne (ChevronLeft)
+                _btnToggle.Text = "\uE00F"; // Chevron gauche
             }
             else
             {
-                // Collapse
-                this.Width = CollapsedWidth;
+                Width = CollapsedWidth;
                 _contentPanel.Visible = false;
-                _btnToggle.Text = "\uE707"; // Icône carte moderne (Map)
+                _btnToggle.Text = "\uE707"; // Icône carte
             }
 
-            this.Invalidate();
+            Invalidate();
+            RealignRight();         // réalignement après changement de largeur
+            ClampChildrenInside();  // garde les sous-contrôles visibles
         }
 
         private void CmbMapType_SelectedIndexChanged(object? sender, EventArgs e)
@@ -163,29 +165,70 @@ namespace wmine.UI
             }
         }
 
-        private GraphicsPath GetRoundedRectangle(Rectangle bounds, int radius)
+        protected override void OnHandleCreated(EventArgs e)
         {
-            var path = new GraphicsPath();
-            int diameter = radius * 2;
-
-            if (diameter > bounds.Width) diameter = bounds.Width;
-            if (diameter > bounds.Height) diameter = bounds.Height;
-
-            path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-            path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-            path.CloseFigure();
-
-            return path;
+            base.OnHandleCreated(e);
+            HookParentResize();
+            RealignRight();
+            ClampChildrenInside();
         }
 
-        // Classe helper pour le ComboBox
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            HookParentResize();
+            RealignRight();
+            ClampChildrenInside();
+        }
+
+        private void HookParentResize()
+        {
+            if (Parent == null) return;
+            Parent.Resize -= Parent_Resize;
+            Parent.Resize += Parent_Resize;
+        }
+
+        private void Parent_Resize(object? sender, EventArgs e)
+        {
+            RealignRight();
+            ClampChildrenInside();
+        }
+
+        private void RealignRight()
+        {
+            if (!AlignRight || Parent == null) return;
+            int x = Parent.ClientSize.Width - Width - 20;
+            int y = TopMargin;
+            Location = new Point(Math.Max(0, x), Math.Max(0, y));
+            Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        }
+
+        private void ClampChildrenInside(int padding = 6)
+        {
+            foreach (Control c in Controls)
+            {
+                int nl = Math.Min(Math.Max(c.Left, padding), ClientSize.Width - c.Width - padding);
+                int nt = Math.Min(Math.Max(c.Top, padding), ClientSize.Height - c.Height - padding);
+                if (nl != c.Left || nt != c.Top)
+                    c.Location = new Point(nl, nt);
+
+                if (c is Panel p)
+                {
+                    foreach (Control cc in p.Controls)
+                    {
+                        int pnl = Math.Min(Math.Max(cc.Left, padding), p.ClientSize.Width - cc.Width - padding);
+                        int pnt = Math.Min(Math.Max(cc.Top, padding), p.ClientSize.Height - cc.Height - padding);
+                        if (pnl != cc.Left || pnt != cc.Top)
+                            cc.Location = new Point(pnl, pnt);
+                    }
+                }
+            }
+        }
+
         private class MapTypeItem
         {
-            public Models.MapType Type { get; set; }
+            public MapType Type { get; set; }
             public string DisplayName { get; set; } = "";
-
             public override string ToString() => DisplayName;
         }
     }

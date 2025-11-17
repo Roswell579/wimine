@@ -192,11 +192,12 @@ namespace wmine.Forms
             {
                 Text = name,
                 Location = new Point(90, 20),
-                Width = 120,  // Réduits pour faire place é la photo
-                Height = 30,
-                Font = new Font("Segoe UI Emoji", 14, FontStyle.Bold),
+                Width = 120,  // conserve la largeur
+                Height = 26,  // réduit pour correspondre à la taille 12
+                Font = new Font("Segoe UI Emoji", 12, FontStyle.Bold), // <- était 14
                 ForeColor = Color.White,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                AutoEllipsis = true // pour éviter le dépassement
             };
 
             // Nombre de filons

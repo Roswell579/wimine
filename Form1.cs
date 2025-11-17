@@ -244,11 +244,11 @@ namespace wmine
                 contextMenu.Font = new Font("Segoe UI Emoji", 10);
                 contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
 
-                var menuAddFilon = new ToolStripMenuItem("?? Nouveau filon ici");
+                var menuAddFilon = new ToolStripMenuItem("Nouveau filon ici");
                 menuAddFilon.Font = new Font("Segoe UI Emoji", 10);
                 menuAddFilon.Click += (s, args) => CreateFilonAtPosition(point.Lat, point.Lng);
 
-                var menuCopyCoords = new ToolStripMenuItem($"?? Copier coordonnées");
+                var menuCopyCoords = new ToolStripMenuItem($"Copier coordonnées");
                 menuCopyCoords.Font = new Font("Segoe UI Emoji", 10);
                 menuCopyCoords.Click += (s, args) =>
                 {
@@ -307,23 +307,23 @@ namespace wmine
             contextMenu.Font = new Font("Segoe UI Emoji", 10);
             contextMenu.Renderer = new ToolStripProfessionalRenderer(new DarkColorTable());
 
-            var menuVoirFiche = new ToolStripMenuItem($"?? Voir fiche de '{filon.Nom}'");
+            var menuVoirFiche = new ToolStripMenuItem($"Voir fiche de '{filon.Nom}'");
             menuVoirFiche.Font = new Font("Segoe UI Emoji", 10);
             menuVoirFiche.Click += (s, e) => OpenFilonFicheComplete(filon);
 
-            var menuEdit = new ToolStripMenuItem($"?? Éditer '{filon.Nom}'");
+            var menuEdit = new ToolStripMenuItem($"Éditer '{filon.Nom}'");
             menuEdit.Font = new Font("Segoe UI Emoji", 10);
             menuEdit.Click += (s, e) => EditFilon(filon);
 
-            var menuDelete = new ToolStripMenuItem($"??? Supprimer '{filon.Nom}'");
+            var menuDelete = new ToolStripMenuItem($"Supprimer '{filon.Nom}'");
             menuDelete.Font = new Font("Segoe UI Emoji", 10);
             menuDelete.Click += (s, e) => DeleteFilon(filon);
 
-            var menuExport = new ToolStripMenuItem($"?? Exporter en PDF");
+            var menuExport = new ToolStripMenuItem($"Exporter en PDF");
             menuExport.Font = new Font("Segoe UI Emoji", 10);
             menuExport.Click += (s, e) => ExportFilonToPdf(filon);
 
-            var menuCopyCoords = new ToolStripMenuItem($"?? Copier coordonnées");
+            var menuCopyCoords = new ToolStripMenuItem($"Copier coordonnées");
             menuCopyCoords.Font = new Font("Segoe UI Emoji", 10);
             menuCopyCoords.Click += (s, e) =>
             {
@@ -464,13 +464,13 @@ namespace wmine
             {
                 _dataService.UpdateFilon(form.Filon);
                 LoadFilons(null);
-                ShowModernMessageBox("? Filon mis à jour!", "Succès", MessageBoxIcon.Information);
+                ShowModernMessageBox("Filon mis à jour!", "Succès", MessageBoxIcon.Information);
             }
         }
 
         private void DeleteFilon(Filon filon)
         {
-            if (ShowModernConfirmation($"étes-vous sûr de vouloir supprimer le filon '{filon.Nom}' ?",
+            if (ShowModernConfirmation($"Etes-vous sûr de vouloir supprimer le filon '{filon.Nom}' ?",
                 "Confirmation"))
             {
                 _dataService.DeleteFilon(filon.Id);
@@ -904,9 +904,6 @@ namespace wmine
                 {
                     gMapControl.Position = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
                     gMapControl.Zoom = 14;
-
-                    // ? Mettre à jour la météo du widget (conversion double -> decimal)
-                    _ = _weatherWidget?.SetLocationAsync((decimal)filon.Latitude.Value, (decimal)filon.Longitude.Value);
                 }
             }
         }

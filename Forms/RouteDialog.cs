@@ -371,7 +371,7 @@ namespace wmine.Forms
             btnExportPdf.Click += BtnExportPdf_Click;
 
             // ? NOUVEAU: Bouton Export GPX
-            var btnExportGpx = new Button
+            btnExportGpx = new Button
             {
                 Text = "Exporter GPX",
                 Width = 150,
@@ -488,87 +488,87 @@ namespace wmine.Forms
         private void BtnPickStartOnMap_Click(object? sender, EventArgs e)
         {
             _isPickingStartPoint = true;
-            btnPickStartOnMap.Text = "Cliquez sur la carte...";
+            btnPickStartOnMap.Text = "Cliquez sur la carte…";
             btnPickStartOnMap.BackColor = Color.FromArgb(255, 152, 0);
 
-            // Hook temporaire sur le clic de la carte
-            MouseEventHandler? mapClickHandler = null;
-            GMapOverlay? tempOverlay = null;
+            bool prevCanDrag = _mapControl.CanDragMap;
+            var prevCursor = _mapControl.Cursor;
+            _mapControl.CanDragMap = false;
+            _mapControl.Cursor = Cursors.Cross;
 
-            mapClickHandler = (s, ev) =>
+            MouseEventHandler? mapDownHandler = null;
+            KeyEventHandler? escHandler = null;
+
+            void Cleanup()
             {
-                if (_isPickingStartPoint && ev.Button == MouseButtons.Left)
+                _isPickingStartPoint = false;
+                btnPickStartOnMap.Text = "Cliquer sur la carte";
+                btnPickStartOnMap.BackColor = Color.FromArgb(33, 150, 243);
+                _mapControl.CanDragMap = prevCanDrag;
+                _mapControl.Cursor = prevCursor;
+
+                if (mapDownHandler != null) _mapControl.MouseDown -= mapDownHandler;
+                if (escHandler != null) this.KeyDown -= escHandler;
+
+                try { if (!IsDisposed) { Show(); BringToFront(); Activate(); } } catch { }
+            }
+
+            mapDownHandler = (s2, ev) =>
+            {
+                if (!_isPickingStartPoint || ev.Button != MouseButtons.Left) return;
+
+                var point = _mapControl.FromLocalToLatLng(ev.X, ev.Y);
+
+                if (double.IsNaN(point.Lat) || point.Lat < -90 || point.Lat > 90 ||
+                    double.IsNaN(point.Lng) || point.Lng < -180 || point.Lng > 180)
                 {
-                    // Utiliser directement les coordonnées de l'événement sans transformation supplémentaire
-                    var point = _mapControl.FromLocalToLatLng(ev.X, ev.Y);
+                    MessageBox.Show($"Coordonnées invalides:\nLat: {point.Lat}\nLng: {point.Lng}",
+                        "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Cleanup();
+                    return;
+                }
 
-                    // Validation des coordonnées
-                    if (point.Lat < -90 || point.Lat > 90 || point.Lng < -180 || point.Lng > 180)
-                    {
-                        MessageBox.Show($"Coordonnées invalides:\nLat: {point.Lat}\nLng: {point.Lng}",
-                            "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
+                txtStartLat.Text = point.Lat.ToString("F6", CultureInfo.InvariantCulture);
+                txtStartLng.Text = point.Lng.ToString("F6", CultureInfo.InvariantCulture);
 
-                    txtStartLat.Text = point.Lat.ToString("F6", CultureInfo.InvariantCulture);
-                    txtStartLng.Text = point.Lng.ToString("F6", CultureInfo.InvariantCulture);
+                const string overlayId = "temp_start";
+                var existing = _mapControl.Overlays.FirstOrDefault(o => o.Id == overlayId);
+                if (existing != null) _mapControl.Overlays.Remove(existing);
 
-                    // Supprimer l'ancien marqueur temporaire s'il existe
-                    var oldTempOverlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "temp_start");
-                    if (oldTempOverlay != null)
-                    {
-                        _mapControl.Overlays.Remove(oldTempOverlay);
-                    }
+                var overlay = new GMapOverlay(overlayId);
+                var startMarker = new GMarkerGoogle(point, GMarkerGoogleType.green_pushpin)
+                {
+                    ToolTipText = $"Départ\n{point.Lat:F6}, {point.Lng:F6}",
+                    ToolTipMode = MarkerTooltipMode.OnMouseOver
+                };
+                overlay.Markers.Add(startMarker);
+                _mapControl.Overlays.Add(overlay);
+                _mapControl.Refresh();
 
-                    // Ajouter un marqueur vert temporaire EXACTEMENT é l'endroit cliqué
-                    tempOverlay = new GMapOverlay("temp_start");
-                    var marker = new GMarkerGoogle(point, GMarkerGoogleType.green_pushpin)
-                    {
-                        ToolTipText = $"départ\n{point.Lat:F6}, {point.Lng:F6}",
-                        ToolTipMode = MarkerTooltipMode.OnMouseOver
-                    };
-                    tempOverlay.Markers.Add(marker);
-                    _mapControl.Overlays.Add(tempOverlay);
-                    _mapControl.Refresh();
+                Cleanup();
 
-                    _isPickingStartPoint = false;
-                    btnPickStartOnMap.Text = "Cliquer sur la carte";
-                    btnPickStartOnMap.BackColor = Color.FromArgb(33, 150, 243);
+                MessageBox.Show($"Point de départ défini :\nLat: {point.Lat:F6}\nLng: {point.Lng:F6}",
+                    "Point sélectionné", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
 
-                    if (mapClickHandler != null)
-                    {
-                        _mapControl.MouseClick -= mapClickHandler;
-                    }
-
-                    // Restaurer le dialogue si pas disposé
-                    try
-                    {
-                        if (!this.IsDisposed)
-                        {
-                            this.Show();
-                            this.BringToFront();
-                            this.Activate();
-
-                            MessageBox.Show($"Point de départ défini :\nLat: {point.Lat:F6}\nLng: {point.Lng:F6}",
-                                "Point sélectionné", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                    }
-                    catch
-                    {
-                        // Dialogue déjé fermé
-                    }
+            escHandler = (s2, ev) =>
+            {
+                if (ev.KeyCode == Keys.Escape)
+                {
+                    Cleanup();
+                    MessageBox.Show("Sélection annulée.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             };
 
-            _mapControl.MouseClick += mapClickHandler;
+            _mapControl.MouseDown += mapDownHandler;
+            this.KeyDown += escHandler;
 
-            // Cacher le dialogue au lieu de le minimiser
-            MessageBox.Show("Cliquez n'importe oé sur la carte pour définir le point de départ.\n\n" +
-                "Vous pouvez zoomer/naviguer normalement sur la carte.\n" +
-                "Le dialogue sera masqué pendant la sélection.",
+            MessageBox.Show(
+                "Cliquez une fois sur la carte pour définir le point de départ.\n" +
+                "Le déplacement de la carte est temporairement désactivé pour garantir la précision.",
                 "Sélection sur carte", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            this.Hide();
+            Hide();
         }
 
         private void LoadFilons()
@@ -940,178 +940,5 @@ namespace wmine.Forms
                 using var sfd = new SaveFileDialog
                 {
                     Filter = "PDF|*.pdf",
-                    FileName = $"Itineraire_{_currentRoute.EndName}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf",
-                    Title = "Exporter l'itinéraire en PDF"
-                };
-
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    ExportRouteToPdf(_currentRoute, sfd.FileName);
-                    MessageBox.Show("Itinéraire exporté en PDF avec succés !",
-                        "Succés", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Erreur lors de l'export PDF:\n{ex.Message}",
-                    "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        // ? NOUVEAU: Export GPX
-        private void BtnExportGpx_Click(object? sender, EventArgs e)
-        {
-            if (_currentRoute == null)
-            {
-                MessageBox.Show("Aucun itinéraire a exporter.",
-                    "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            try
-            {
-                using var sfd = new SaveFileDialog
-                {
-                    Filter = "Fichiers GPX|*.gpx",
-                    FileName = $"Route_{_currentRoute.EndName}_{DateTime.Now:yyyyMMdd_HHmmss}.gpx",
-                    Title = "Exporter l'itinéraire en GPX"
-                };
-
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    var gpxService = new GpxExportService();
-                    bool success = gpxService.ExportRouteToGpx(_currentRoute, sfd.FileName);
-
-                    if (success)
-                    {
-                        MessageBox.Show(
-                            $"Itinéraire exporté en GPX avec succés !\n\n" +
-                            $"Fichier : {System.IO.Path.GetFileName(sfd.FileName)}\n\n" +
-                            $"?? Compatible avec :\n" +
-                            $"é GPS Garmin\n" +
-                            $"é Smartphones (iOS/Android)\n" +
-                            $"é Applications de randonnée\n" +
-                            $"é Google Earth (via conversion)",
-                            "Export GPX réussi",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information);
-                    }
-                    else
-                    {
-                        MessageBox.Show("Erreur lors de l'export GPX.",
-                            "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Erreur lors de l'export GPX:\n{ex.Message}",
-                    "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private void ExportRouteToPdf(RouteInfo route, string filePath)
-        {
-            // Créer un texte formaté pour l'export
-            var content = new System.Text.StringBuilder();
-            content.AppendLine($"ITINéRAIRE VERS {route.EndName}");
-            content.AppendLine($"Généré le {DateTime.Now:dd/MM/yyyy é HH:mm}");
-            content.AppendLine();
-            content.AppendLine("INFORMATIONS");
-            content.AppendLine($"départ: {route.StartName}");
-            content.AppendLine($"Arrivée: {route.EndName}");
-            content.AppendLine($"Transport: {GetTransportName(route.TransportType)}");
-            content.AppendLine($"Distance: {route.FormattedDistance}");
-            content.AppendLine($"Durée estimée: {route.FormattedDuration}");
-            content.AppendLine($"Points GPS: {route.Points.Count}");
-            content.AppendLine();
-
-            if (route.Instructions.Count > 0)
-            {
-                content.AppendLine("INSTRUCTIONS DE NAVIGATION");
-                for (int i = 0; i < route.Instructions.Count; i++)
-                {
-                    content.AppendLine($"{i + 1}. {route.Instructions[i]}");
-                }
-            }
-
-            // Utiliser PdfExportService existant ou écrire en texte simple
-            try
-            {
-                // Sauvegarder en fichier texte temporairement (ou utiliser PdfExportService si disponible)
-                File.WriteAllText(filePath.Replace(".pdf", ".txt"), content.ToString());
-
-                // Pour un vrai PDF, il faudrait utiliser le PdfExportService existant
-                // mais il est conéu pour les Filons, pas les routes
-                // Solution simple: export texte pour l'instant
-                MessageBox.Show("Export réalisé en format texte (.txt) car le service PDF n'est pas encore adapté aux itinéraires.\n\n" +
-                    $"Fichier: {filePath.Replace(".pdf", ".txt")}",
-                    "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Erreur d'écriture du fichier: {ex.Message}", ex);
-            }
-        }
-
-        // ? NOUVEAU: Exporter en GPX
-        private void ExportRouteToGpx(RouteInfo route, string filePath)
-        {
-            // Créer le document GPX
-            var gpx = new System.Xml.Linq.XDocument(
-                new System.Xml.Linq.XElement("gpx",
-                    new System.Xml.Linq.XAttribute("version", "1.1"),
-                    new System.Xml.Linq.XAttribute("creator", "WitoJordanMineLocalisateur")
-                )
-            );
-
-            // Ajouter les waypoints (points de la route)
-            var wpts = new System.Xml.Linq.XElement("waypoints");
-            foreach (var point in route.Points)
-            {
-                wpts.Add(new System.Xml.Linq.XElement("wp",
-                    new System.Xml.Linq.XAttribute("lat", point.Lat),
-                    new System.Xml.Linq.XAttribute("lon", point.Lng)
-                ));
-            }
-            gpx.Root.Add(wpts);
-
-            // Ajouter les métadonnées
-            var meta = new System.Xml.Linq.XElement("metadata",
-                new System.Xml.Linq.XElement("name", $"Itinéraire vers {route.EndName}"),
-                new System.Xml.Linq.XElement("desc", "Itinéraire calculé avec WitoJordanMineLocalisateur"),
-                new System.Xml.Linq.XElement("author", "VotreNom")
-            );
-            gpx.Root.Add(meta);
-
-            // Sauvegarder le fichier
-            gpx.Save(filePath);
-        }
-
-        private void AppendText(string text)
-        {
-            txtResults.SelectionColor = Color.White;
-            txtResults.AppendText(text);
-        }
-
-        private void AppendColored(string text, Color color, bool bold = false)
-        {
-            txtResults.SelectionColor = color;
-            txtResults.SelectionFont = new Font(txtResults.Font, bold ? FontStyle.Bold : FontStyle.Regular);
-            txtResults.AppendText(text);
-            txtResults.SelectionFont = new Font(txtResults.Font, FontStyle.Regular);
-        }
-
-        private string GetTransportName(TransportType type)
-        {
-            return type switch
-            {
-                TransportType.Car => "Voiture ??",
-                TransportType.Walking => "à pied ??",
-                TransportType.Cycling => "Vélo ??",
-                _ => "Inconnu"
-            };
-        }
-    }
-}
+                    FileName = $"Itineraire_{_currentRoute.EndName}_{DateTime.Now:yyyyMMdd_HHm
 

@@ -11,6 +11,10 @@ namespace wmine.UI
         private ComboBox _cmbMapType;
         private Label _lblTitle;
 
+        // Nouveaux: alignement et marge
+        private bool _alignRight = true;
+        private int _topMargin = 20;
+
         public event EventHandler<MapType>? MapTypeChanged;
         public MapType CurrentMapType { get; private set; } = MapType.OpenStreetMap;
 
@@ -24,7 +28,7 @@ namespace wmine.UI
             // Panel principal
             this.Width = 250;
             this.Height = 80;
-            this.BackColor = Color.FromArgb(180, 40, 45, 55); // Semi-transparent comme les autres
+            this.BackColor = Color.FromArgb(180, 40, 45, 55);
             this.BorderStyle = BorderStyle.None;
             this.Padding = new Padding(10);
 
@@ -66,12 +70,8 @@ namespace wmine.UI
 
             foreach (MapType mapType in Enum.GetValues(typeof(MapType)))
             {
-                // Filtrer les cartes topographiques non fonctionnelles
-                if (mapType == MapType.OpenTopoMap ||
-                    mapType == MapType.EsriWorldTopo)
-                {
+                if (mapType == MapType.OpenTopoMap || mapType == MapType.EsriWorldTopo)
                     continue;
-                }
 
                 mapTypes.Add(new MapTypeItem
                 {
@@ -110,12 +110,54 @@ namespace wmine.UI
             }
         }
 
-        /// <summary>
-        /// Définit le type de carte sélectionné
-        /// </summary>
-        public void SetMapType(MapType mapType)
+        // Alignement à droite forcé au démarrage et resize
+        protected override void OnHandleCreated(EventArgs e)
         {
-            _cmbMapType.SelectedValue = mapType;
+            base.OnHandleCreated(e);
+            HookParentResize();
+            RealignRight();
+            ClampChildrenInside();
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            HookParentResize();
+            RealignRight();
+            ClampChildrenInside();
+        }
+
+        private void HookParentResize()
+        {
+            if (this.Parent == null) return;
+            this.Parent.Resize -= Parent_Resize;
+            this.Parent.Resize += Parent_Resize;
+        }
+
+        private void Parent_Resize(object? sender, EventArgs e)
+        {
+            RealignRight();
+            ClampChildrenInside();
+        }
+
+        private void RealignRight()
+        {
+            if (this.Parent == null || !_alignRight) return;
+            int x = this.Parent.ClientSize.Width - this.Width - 20;
+            int y = _topMargin;
+            this.Location = new Point(Math.Max(0, x), Math.Max(0, y));
+            this.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        }
+
+        private void ClampChildrenInside(int padding = 6)
+        {
+            foreach (Control c in this.Controls)
+            {
+                int newLeft = Math.Min(Math.Max(c.Left, padding), this.ClientSize.Width - c.Width - padding);
+                int newTop = Math.Min(Math.Max(c.Top, padding), this.ClientSize.Height - c.Height - padding);
+                if (newLeft != c.Left || newTop != c.Top)
+                    c.Location = new Point(newLeft, newTop);
+            }
         }
 
         // Classe helper pour le ComboBox
@@ -123,7 +165,6 @@ namespace wmine.UI
         {
             public MapType Type { get; set; }
             public string DisplayName { get; set; } = "";
-
             public override string ToString() => DisplayName;
         }
     }
