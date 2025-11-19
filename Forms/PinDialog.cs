@@ -34,7 +34,7 @@ namespace wmine.Forms
 
         private void InitializeComponents(string message)
         {
-            this.Text = _isSettingNewPin ? "définir un code PIN" : "Code PIN requis";
+            this.Text = _isSettingNewPin ? "Définir un code PIN" : "Code PIN requis";
             this.Size = new Size(500, 320);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -46,7 +46,7 @@ namespace wmine.Forms
             // Icéne de cadenas
             var lblIcon = new Label
             {
-                Text = "??",
+                Text = "?",
                 Location = new Point(220, 20),
                 Width = 60,
                 Height = 60,
@@ -115,7 +115,7 @@ namespace wmine.Forms
             // Bouton Valider
             btnValidate = new TransparentGlassButton
             {
-                Text = _isSettingNewPin ? "définir PIN" : "Valider",
+                Text = _isSettingNewPin ? "Définir PIN" : "Valider",
                 Location = new Point(100, 230),
                 Width = 150,
                 Height = 50,

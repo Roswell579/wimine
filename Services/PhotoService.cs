@@ -72,6 +72,27 @@ namespace wmine.Services
         }
 
         /// <summary>
+        /// Supprime la photo d'un minéral si elle existe (jpg/png).
+        /// </summary>
+        public bool DeleteMineralPhoto(MineralType mineralType)
+        {
+            var path = GetMineralPhotoPath(mineralType);
+            if (path == null)
+                return false;
+
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Obtient toutes les photos d'un filon
         /// </summary>
         public List<string> GetFilonPhotos(int filonId)
@@ -176,8 +197,8 @@ namespace wmine.Services
         private bool IsImageFile(string filePath)
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            return extension == ".jpg" || extension == ".jpeg" || 
-                   extension == ".png" || extension == ".bmp" || 
+            return extension == ".jpg" || extension == ".jpeg" ||
+                   extension == ".png" || extension == ".bmp" ||
                    extension == ".gif";
         }
 

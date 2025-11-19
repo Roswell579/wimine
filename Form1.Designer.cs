@@ -2,6 +2,7 @@
 using wmine.Models;
 using wmine.UI;
 using wmine.Services;
+using QuestPDF.Helpers;
 
 namespace wmine
 {
@@ -215,7 +216,23 @@ namespace wmine
                 }
             };
 
-            panelButtons.Controls.AddRange(new Control[] { btnAddFilon, btnEditFilon, btnDeleteFilon, btnExportPdf, btnShareEmail, btnViewFiches, btnSearchLocation });
+            // ??? AJOUTEZ CE NOUVEAU BOUTON IA ICI :
+            var btnIa = new Button
+            {
+                Text = "🤖 IA",
+                Width = 90,
+                Height = 40,
+                Location = new Point(810, 5),
+                BackColor = Color.FromArgb(103, 58, 183),  // Violet foncé
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 10, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            btnIa.FlatAppearance.BorderSize = 0;
+            btnIa.Click += BtnIa_Click;
+
+            panelButtons.Controls.AddRange(new Control[] { btnAddFilon, btnEditFilon, btnDeleteFilon, btnExportPdf, btnShareEmail, btnViewFiches, btnSearchLocation, btnIa });  // Ajout de btnIa à la fin
 
             panelSelectors = new Panel
             {
@@ -478,6 +495,15 @@ namespace wmine
             gMapControl.MouseMove += GMapControl_MouseMove_Rotation;
             gMapControl.MouseUp += GMapControl_MouseUp_Rotation;
 
+            // ToolTips - Initialiser AVANT l'utilisation
+            tooltipMain = new ToolTip(this.components)
+            {
+                InitialDelay = 300,
+                AutoPopDelay = 5000,
+                ReshowDelay = 100,
+                ShowAlways = true
+            };
+
             // Bouton Rotation 90°
             btnRotateMap = new Button
             {
@@ -496,6 +522,7 @@ namespace wmine
             btnRotateMap.Click += (s, e) => { gMapControl.Bearing = (gMapControl.Bearing + 90f) % 360f; };
             panelMap.Controls.Add(btnRotateMap);
             btnRotateMap.BringToFront();
+            tooltipMain.SetToolTip(btnRotateMap, "Rotation 90° (ou Ctrl+Glisser sur la carte)");
 
             // Bouton Reset Orientation (Nord)
             btnResetOrientation = new Button
@@ -515,6 +542,7 @@ namespace wmine
             btnResetOrientation.Click += (s, e) => { gMapControl.Bearing = 0f; };
             panelMap.Controls.Add(btnResetOrientation);
             btnResetOrientation.BringToFront();
+            tooltipMain.SetToolTip(btnResetOrientation, "Réinitialiser l'orientation Nord (le zoom ne change pas)");
 
             // Bouton Itinéraire
             btnRoute = new Button
@@ -534,6 +562,27 @@ namespace wmine
             btnRoute.Click += BtnRoute_Click;
             panelMap.Controls.Add(btnRoute);
             btnRoute.BringToFront();
+            tooltipMain.SetToolTip(btnRoute, "Calculer un itinéraire vers un filon");
+
+            // Bouton IA (vert, à côté du bouton orange)
+            var btnIaMap = new Button
+            {
+                Text = "🤖",
+                Width = 50,
+                Height = 50,
+                Location = new Point(200, 220),
+                BackColor = Color.FromArgb(76, 175, 80),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Emoji", 18, FontStyle.Regular),
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left
+            };
+            btnIaMap.FlatAppearance.BorderSize = 0;
+            btnIaMap.Click += BtnIa_Click;
+            panelMap.Controls.Add(btnIaMap);
+            btnIaMap.BringToFront();
+            tooltipMain.SetToolTip(btnIaMap, "Identification IA de minéraux par image");
 
             // Boutons flottants: création AVANT l'utilisation dans les ToolTips
             _btnToggleTopBar = new Button
@@ -553,6 +602,7 @@ namespace wmine
             _btnToggleTopBar.Click += BtnToggleTopBar_Click;
             panelMap.Controls.Add(_btnToggleTopBar);
             _btnToggleTopBar.BringToFront();
+            tooltipMain.SetToolTip(_btnToggleTopBar, "Afficher/masquer le panneau de commandes");
 
             _btnToggleTabs = new Button
             {
@@ -571,20 +621,9 @@ namespace wmine
             _btnToggleTabs.Click += BtnToggleTabs_Click;
             panelMap.Controls.Add(_btnToggleTabs);
             _btnToggleTabs.BringToFront();
+            tooltipMain.SetToolTip(_btnToggleTabs, "Afficher/masquer les onglets");
 
-            // ToolTips après la création des boutons
-            tooltipMain = new ToolTip(this.components)
-            {
-                InitialDelay = 300,
-                AutoPopDelay = 5000,
-                ReshowDelay = 100,
-                ShowAlways = true
-            };
-            tooltipMain.SetToolTip(btnRotateMap, "Rotation 90° (ou Ctrl+Glisser sur la carte)");
-            tooltipMain.SetToolTip(btnResetOrientation, "Réinitialiser l'orientation Nord (le zoom ne change pas)");
-            tooltipMain.SetToolTip(btnRoute, "Calculer un itinéraire vers un filon");
-            if (_btnToggleTopBar != null) tooltipMain.SetToolTip(_btnToggleTopBar, "Afficher/masquer le panneau de commandes");
-            if (_btnToggleTabs != null) tooltipMain.SetToolTip(_btnToggleTabs, "Afficher/masquer les onglets");
+            // Tooltips pour les contrôles du TopBar
             tooltipMain.SetToolTip(btnAddFilon, "Créer un nouveau filon minier");
             tooltipMain.SetToolTip(btnEditFilon, "Modifier le filon sélectionné");
             tooltipMain.SetToolTip(btnDeleteFilon, "Supprimer définitivement le filon");

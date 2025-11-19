@@ -1,0 +1,86 @@
+﻿using System.Drawing.Drawing2D;
+using GMap.NET.WindowsForms;
+
+namespace wmine.UI
+{
+    public class HexagonalCrystalMarker : GMapMarker
+    {
+        private readonly Color _color;
+        private readonly string _name;
+        private const int SIZE = 30;
+
+        public HexagonalCrystalMarker(GMap.NET.PointLatLng pos, Color color, string name)
+            : base(pos)
+        {
+            _color = color;
+            _name = name;
+            Size = new Size(SIZE, SIZE);
+            Offset = new Point(-SIZE / 2, -SIZE / 2);
+        }
+
+        public override void OnRender(Graphics g)
+        {
+            // Créer le chemin hexagonal (cristal)
+            var hexPath = new GraphicsPath();
+            var center = new PointF(SIZE / 2f, SIZE / 2f);
+            var radius = SIZE / 2f - 2;
+
+            // Dessiner un hexagone
+            PointF[] hexPoints = new PointF[6];
+            for (int i = 0; i < 6; i++)
+            {
+                double angle = Math.PI / 3 * i - Math.PI / 6; // -30° pour orientation
+                hexPoints[i] = new PointF(
+                    center.X + radius * (float)Math.Cos(angle),
+                    center.Y + radius * (float)Math.Sin(angle)
+                );
+            }
+            hexPath.AddPolygon(hexPoints);
+
+            // Ombre portée
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var shadowBrush = new SolidBrush(Color.FromArgb(100, 0, 0, 0)))
+            {
+                g.TranslateTransform(2, 2);
+                g.FillPath(shadowBrush, hexPath);
+                g.ResetTransform();
+            }
+
+            // Remplissage du cristal avec dégradé
+            using (var brush = new LinearGradientBrush(
+                new Point(0, 0),
+                new Point(SIZE, SIZE),
+                Color.FromArgb(220, _color),
+                Color.FromArgb(180, _color.R / 2, _color.G / 2, _color.B / 2)))
+            {
+                g.FillPath(brush, hexPath);
+            }
+
+            // Bordure blanche brillante
+            using (var pen = new Pen(Color.FromArgb(200, 255, 255, 255), 2))
+            {
+                g.DrawPath(pen, hexPath);
+            }
+
+            // Effet de brillance
+            using (var highlightPath = new GraphicsPath())
+            {
+                PointF[] highlightPoints = new PointF[3];
+                for (int i = 0; i < 3; i++)
+                {
+                    double angle = Math.PI / 3 * i - Math.PI / 6;
+                    highlightPoints[i] = new PointF(
+                        center.X + radius * 0.5f * (float)Math.Cos(angle),
+                        center.Y + radius * 0.5f * (float)Math.Sin(angle)
+                    );
+                }
+                highlightPath.AddPolygon(highlightPoints);
+
+                using (var highlightBrush = new SolidBrush(Color.FromArgb(80, 255, 255, 255)))
+                {
+                    g.FillPath(highlightBrush, highlightPath);
+                }
+            }
+        }
+    }
+}

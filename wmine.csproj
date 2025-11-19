@@ -9,20 +9,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClosedXML" Version="0.104.2" />
-    <PackageReference Include="EPPlus" Version="7.5.2" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="EPPlus" Version="8.2.1" />
     <PackageReference Include="GMap.NET.Core" Version="2.1.7" />
     <PackageReference Include="GMap.NET.WinForms" Version="2.1.7" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3595.46" />
     <PackageReference Include="QRCoder" Version="1.7.0" />
-    <PackageReference Include="QuestPDF" Version="2024.12.3" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="QuestPDF" Version="2025.7.4" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="MaterialSkin.2" Version="2.3.1" />
     <PackageReference Include="Tesseract" Version="5.2.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Exclure uniquement les services / modèles météo (UI réintégrée) -->
+    <Compile Remove="Forms\OcrImportForm.cs" />
+    <Compile Remove="Services\RouteDialog.cs" />
     <Compile Remove="Services\WeatherService.cs" />
     <Compile Remove="Services\MeteoService.cs" />
     <Compile Remove="Models\WeatherInfo.cs" />
@@ -35,6 +39,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Tests\wmine.Tests.csproj" />
+    <None Include="wmine\wmine.csproj" />
   </ItemGroup>
 
   <ItemGroup>

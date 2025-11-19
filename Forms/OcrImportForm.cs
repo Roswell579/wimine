@@ -92,6 +92,27 @@ namespace wmine.Forms
             btnRunOcr.FlatAppearance.BorderSize = 0;
             btnRunOcr.Click += BtnRunOcr_Click;
 
+            // Bouton scan IA (URL mindat.org)
+            var btnScanIa = new Button
+            {
+                Text = "scan IA",
+                Location = new Point(btnRunOcr.Right + 20, btnRunOcr.Top),
+                Width = 160,
+                Height = 50,
+                BackColor = Color.FromArgb(255, 152, 0),
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI Emoji", 12, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Name = "btnScanIa"
+            };
+            btnScanIa.FlatAppearance.BorderSize = 0;
+            btnScanIa.Click += (s, e) =>
+            {
+                using var f = new MineralUrlImportForm();
+                f.ShowDialog(this);
+            };
+
             // ListView pour résultats
             var listViewResults = new ListView
             {
@@ -177,6 +198,7 @@ namespace wmine.Forms
             mainPanel.Controls.Add(lblInstructions);
             mainPanel.Controls.Add(btnSelectFiles);
             mainPanel.Controls.Add(btnRunOcr);
+            mainPanel.Controls.Add(btnScanIa);
             mainPanel.Controls.Add(listViewResults);
             mainPanel.Controls.Add(bottomPanel);
 
@@ -285,8 +307,8 @@ namespace wmine.Forms
 
                 MessageBox.Show($"Analyse terminée !\n\n" +
                     $"Filons détectés: {_importResults.Count(r => r.IsValid)}\n" +
-                    $"  é Depuis Excel: {_importResults.Count(r => r.IsValid && (r.SourceFile?.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) == true || r.SourceFile?.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) == true))}\n" +
-                    $"  é Depuis OCR: {_importResults.Count(r => r.IsValid && !(r.SourceFile?.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) == true || r.SourceFile?.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) == true))}\n\n" +
+                    $"  é Depuis Excel: {_importResults.Count(r => r.IsValid && (r.SourceFile?.EndsWith(\".xlsx\", StringComparison.OrdinalIgnoreCase) == true || r.SourceFile?.EndsWith(\".xls\", StringComparison.OrdinalIgnoreCase) == true))}\n" +
+                    $"  é Depuis OCR: {_importResults.Count(r => r.IsValid && !(r.SourceFile?.EndsWith(\".xlsx\", StringComparison.OrdinalIgnoreCase) == true || r.SourceFile?.EndsWith(\".xls\", StringComparison.OrdinalIgnoreCase) == true))}\n\n" +
                     $"Lignes non reconnues: {_importResults.Count(r => !r.IsValid)}",
                     "Résultats", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -334,7 +356,7 @@ namespace wmine.Forms
                     item.SubItems.Add("-");
                     item.SubItems.Add("-");
                     item.SubItems.Add("-");
-                    item.SubItems.Add($"{result.ErrorMessage}");
+                    item.SubItems.Add(result.ErrorMessage ?? "Invalide");
                     item.SubItems.Add(result.SourceFile ?? "");
                     item.ForeColor = Color.FromArgb(244, 67, 54);
                 }

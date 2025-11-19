@@ -137,8 +137,42 @@ namespace wmine.Forms
                     Height = 60,
                     Location = new Point(220, 20),
                     Image = _photoService.CreateThumbnail(photoPath, 60, 60),
-                    BackColor = Color.Transparent
+                    BackColor = Color.Transparent,
+                    Cursor = Cursors.Hand
                 };
+
+                // Menu contextuel: supprimer la photo
+                var ctx = new ContextMenuStrip();
+                ctx.Items.Add("Supprimer la photo", null, (sender, args) =>
+                {
+                    var nameToShow = MineralColors.GetDisplayName(mineralType);
+                    if (MessageBox.Show($"Supprimer la photo du minéral « {nameToShow} » ",
+                        "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        try
+                        {
+                            var ok = _photoService.DeleteMineralPhoto(mineralType);
+                            if (ok)
+                            {
+                                LoadMinerals(); // rafraîchir la grille
+                                MessageBox.Show("Photo supprimée.", "Succès",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            else
+                            {
+                                MessageBox.Show("Aucune photo à supprimer ou opération refusée.",
+                                    "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Erreur lors de la suppression: {ex.Message}",
+                                "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                });
+                photoBox.ContextMenuStrip = ctx;
+
                 card.Controls.Add(photoBox);
             }
             else
@@ -358,7 +392,7 @@ namespace wmine.Forms
                 MineralType.Fer => "élément métallique\nSymbole: Fe\nUtilisation: Construction",
                 MineralType.Cuivre => "Métal conducteur\nSymbole: Cu\nélectricité",
                 MineralType.Argent => "Métal précieux\nSymbole: Ag\nBijouterie",
-                _ => "Propriétés é documenter"
+                _ => "Propriétés à documenter"
             };
         }
 

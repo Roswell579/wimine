@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.Globalization;
-using System.Text;
+﻿using System.Globalization;
 using GMap.NET;
 using GMap.NET.WindowsForms;
 using GMap.NET.WindowsForms.Markers;
@@ -17,7 +15,7 @@ namespace wmine.Forms
         private readonly RouteService _routeService;
         private readonly GMapControl _mapControl;
         private readonly List<Filon> _filons;
-        private readonly PerformanceOptimizer _perfOptimizer;
+        private readonly PerformanceOptimizer _perfOptimizer; //  NOUVEAU
 
         // Assigned in InitializeComponent()
         private TextBox txtStartAddress = null!;
@@ -27,8 +25,8 @@ namespace wmine.Forms
         private ComboBox cmbTransportType = null!;
         private Button btnCalculate = null!;
         private Button btnPickStartOnMap = null!;
-        private Button btnExportPdf = null!;
-        private Button btnExportGpx = null!;
+        private Button btnExportPdf = null!; //  NOUVEAU
+        private Button btnExportGpx = null!; //  NOUVEAU
         private RichTextBox txtResults = null!;
         private Button btnShowOnMap = null!;
         private Label lblStatus = null!;
@@ -41,18 +39,22 @@ namespace wmine.Forms
             _routeService = new RouteService();
             _mapControl = mapControl;
             _filons = filons.Where(f => f.Latitude.HasValue && f.Longitude.HasValue).ToList();
-            _perfOptimizer = new PerformanceOptimizer();
+            _perfOptimizer = new PerformanceOptimizer(); // ? INIT
 
             InitializeComponent();
             LoadFilons();
             LoadDefaultStart();
 
+            // Nettoyer le pin temporaire é la fermeture
             this.FormClosing += RouteDialog_FormClosing;
         }
 
         private void RouteDialog_FormClosing(object? sender, FormClosingEventArgs e)
         {
+            // ? Annuler les opérations en cours
             _perfOptimizer?.Dispose();
+
+            // Supprimer le pin temporaire de départ si présent
             var tempOverlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "temp_start");
             if (tempOverlay != null)
             {
@@ -76,10 +78,11 @@ namespace wmine.Forms
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(20),
-                ColumnCount = 1
+                ColumnCount = 1,
+                RowCount = 7
             };
 
-            // Section DÉPART
+            // Section déPART
             var startGroupBox = new GroupBox
             {
                 Text = " Point de départ",
@@ -178,7 +181,7 @@ namespace wmine.Forms
 
             var lblInfo = new Label
             {
-                Text = "Décochez la case ci-dessus pour saisir manuellement ou cliquer sur la carte",
+                Text = "décochez la case ci-dessus pour saisir manuellement ou cliquer sur la carte",
                 Location = new Point(10, 145),
                 Width = 500,
                 Height = 20,
@@ -237,7 +240,7 @@ namespace wmine.Forms
             destGroupBox.Controls.Add(destPanel);
             mainPanel.Controls.Add(destGroupBox);
 
-            // Section TRANSPORT
+            // Section TYPE DE TRANSPORT
             var transportPanel = new FlowLayoutPanel
             {
                 Height = 60,
@@ -305,7 +308,7 @@ namespace wmine.Forms
             transportPanel.Controls.Add(btnClearRoute);
             mainPanel.Controls.Add(transportPanel);
 
-            // Statut
+            // Label de statut
             lblStatus = new Label
             {
                 Text = "Sélectionnez un filon de destination et cliquez sur Calculer",
@@ -318,7 +321,7 @@ namespace wmine.Forms
             };
             mainPanel.Controls.Add(lblStatus);
 
-            // Résultats
+            // Zone de résultats
             txtResults = new RichTextBox
             {
                 Dock = DockStyle.Fill,
@@ -330,7 +333,7 @@ namespace wmine.Forms
             };
             mainPanel.Controls.Add(txtResults);
 
-            // Actions
+            // Boutons d'action
             var actionsPanel = new FlowLayoutPanel
             {
                 Height = 50,
@@ -368,7 +371,8 @@ namespace wmine.Forms
             btnExportPdf.FlatAppearance.BorderSize = 0;
             btnExportPdf.Click += BtnExportPdf_Click;
 
-            btnExportGpx = new Button
+            // ? NOUVEAU: Bouton Export GPX
+            var btnExportGpx = new Button
             {
                 Text = "Exporter GPX",
                 Width = 150,
@@ -400,17 +404,16 @@ namespace wmine.Forms
 
             actionsPanel.Controls.Add(btnClose);
             actionsPanel.Controls.Add(btnExportPdf);
-            actionsPanel.Controls.Add(btnExportGpx);
+            actionsPanel.Controls.Add(btnExportGpx); // ? AJOUT
             actionsPanel.Controls.Add(btnShowOnMap);
             mainPanel.Controls.Add(actionsPanel);
 
-            // RowStyles
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // départ
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Destination
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Transport
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Status
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // Résultats
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Actions
 
             this.Controls.Add(mainPanel);
         }
@@ -418,28 +421,48 @@ namespace wmine.Forms
         private void CmbDestination_DrawItem(object? sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
+
             e.DrawBackground();
+
             var backColor = (e.State & DrawItemState.Selected) == DrawItemState.Selected
                 ? Color.FromArgb(0, 150, 136)
                 : Color.FromArgb(60, 65, 75);
-            using var brush = new SolidBrush(backColor);
-            e.Graphics.FillRectangle(brush, e.Bounds);
-            using var textBrush = new SolidBrush(Color.White);
-            e.Graphics.DrawString(cmbDestination.Items[e.Index]?.ToString() ?? "", e.Font ?? this.Font, textBrush, e.Bounds.Left + 5, e.Bounds.Top + 2);
+
+            using (var brush = new SolidBrush(backColor))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+
+            using (var textBrush = new SolidBrush(Color.White))
+            {
+                var text = cmbDestination.Items[e.Index]?.ToString() ?? "";
+                e.Graphics.DrawString(text, e.Font ?? this.Font, textBrush, e.Bounds.Left + 5, e.Bounds.Top + 2);
+            }
+
             e.DrawFocusRectangle();
         }
 
         private void CmbTransportType_DrawItem(object? sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
+
             e.DrawBackground();
+
             var backColor = (e.State & DrawItemState.Selected) == DrawItemState.Selected
                 ? Color.FromArgb(0, 150, 136)
                 : Color.FromArgb(60, 65, 75);
-            using var brush = new SolidBrush(backColor);
-            e.Graphics.FillRectangle(brush, e.Bounds);
-            using var textBrush = new SolidBrush(Color.White);
-            e.Graphics.DrawString(cmbTransportType.Items[e.Index]?.ToString() ?? "", e.Font ?? this.Font, textBrush, e.Bounds.Left + 5, e.Bounds.Top + 2);
+
+            using (var brush = new SolidBrush(backColor))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+
+            using (var textBrush = new SolidBrush(Color.White))
+            {
+                var text = cmbTransportType.Items[e.Index]?.ToString() ?? "";
+                e.Graphics.DrawString(text, e.Font ?? this.Font, textBrush, e.Bounds.Left + 5, e.Bounds.Top + 2);
+            }
+
             e.DrawFocusRectangle();
         }
 
@@ -469,88 +492,83 @@ namespace wmine.Forms
             btnPickStartOnMap.Text = "Cliquez sur la carte...";
             btnPickStartOnMap.BackColor = Color.FromArgb(255, 152, 0);
 
+            // Hook temporaire sur le clic de la carte
             MouseEventHandler? mapClickHandler = null;
-
-            void RestoreDialog()
-            {
-                _isPickingStartPoint = false;
-
-                if (mapClickHandler != null)
-                    _mapControl.MouseClick -= mapClickHandler;
-
-                if (this.IsDisposed) return;
-
-                this.BeginInvoke(new Action(() =>
-                {
-                    try
-                    {
-                        this.Show();
-                        this.TopMost = true;
-                        this.BringToFront();
-                        this.Activate();
-                    }
-                    finally
-                    {
-                        var t = new System.Windows.Forms.Timer { Interval = 100 };
-                        t.Tick += (s2, e2) =>
-                        {
-                            this.TopMost = false;
-                            ((System.Windows.Forms.Timer)s2).Stop();
-                            t.Dispose();
-                        };
-                        t.Start();
-                    }
-
-                    btnPickStartOnMap.Text = "Cliquer sur la carte";
-                    btnPickStartOnMap.BackColor = Color.FromArgb(33, 150, 243);
-                }));
-            }
+            GMapOverlay? tempOverlay = null;
 
             mapClickHandler = (s, ev) =>
             {
-                if (!_isPickingStartPoint) return;
-
-                // Clic droit = annuler
-                if (ev.Button == MouseButtons.Right)
+                if (_isPickingStartPoint && ev.Button == MouseButtons.Left)
                 {
-                    RestoreDialog();
-                    return;
+                    // Utiliser directement les coordonnées de l'événement sans transformation supplémentaire
+                    var point = _mapControl.FromLocalToLatLng(ev.X, ev.Y);
+
+                    // Validation des coordonnées
+                    if (point.Lat < -90 || point.Lat > 90 || point.Lng < -180 || point.Lng > 180)
+                    {
+                        MessageBox.Show($"Coordonnées invalides:\nLat: {point.Lat}\nLng: {point.Lng}",
+                            "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    txtStartLat.Text = point.Lat.ToString("F6", CultureInfo.InvariantCulture);
+                    txtStartLng.Text = point.Lng.ToString("F6", CultureInfo.InvariantCulture);
+
+                    // Supprimer l'ancien marqueur temporaire s'il existe
+                    var oldTempOverlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "temp_start");
+                    if (oldTempOverlay != null)
+                    {
+                        _mapControl.Overlays.Remove(oldTempOverlay);
+                    }
+
+                    // Ajouter un marqueur vert temporaire EXACTEMENT é l'endroit cliqué
+                    tempOverlay = new GMapOverlay("temp_start");
+                    var marker = new GMarkerGoogle(point, GMarkerGoogleType.green_pushpin)
+                    {
+                        ToolTipText = $"départ\n{point.Lat:F6}, {point.Lng:F6}",
+                        ToolTipMode = MarkerTooltipMode.OnMouseOver
+                    };
+                    tempOverlay.Markers.Add(marker);
+                    _mapControl.Overlays.Add(tempOverlay);
+                    _mapControl.Refresh();
+
+                    _isPickingStartPoint = false;
+                    btnPickStartOnMap.Text = "Cliquer sur la carte";
+                    btnPickStartOnMap.BackColor = Color.FromArgb(33, 150, 243);
+
+                    if (mapClickHandler != null)
+                    {
+                        _mapControl.MouseClick -= mapClickHandler;
+                    }
+
+                    // Restaurer le dialogue si pas disposé
+                    try
+                    {
+                        if (!this.IsDisposed)
+                        {
+                            this.Show();
+                            this.BringToFront();
+                            this.Activate();
+
+                            MessageBox.Show($"Point de départ défini :\nLat: {point.Lat:F6}\nLng: {point.Lng:F6}",
+                                "Point sélectionné", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    }
+                    catch
+                    {
+                        // Dialogue déjé fermé
+                    }
                 }
-
-                if (ev.Button != MouseButtons.Left) return;
-
-                var point = _mapControl.FromLocalToLatLng(ev.X, ev.Y);
-
-                if (point.Lat < -90 || point.Lat > 90 || point.Lng < -180 || point.Lng > 180)
-                {
-                    RestoreDialog();
-                    return;
-                }
-
-                txtStartLat.Text = point.Lat.ToString("F6", CultureInfo.InvariantCulture);
-                txtStartLng.Text = point.Lng.ToString("F6", CultureInfo.InvariantCulture);
-
-                var oldTempOverlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "temp_start");
-                if (oldTempOverlay != null)
-                    _mapControl.Overlays.Remove(oldTempOverlay);
-
-                var tempOverlay = new GMapOverlay("temp_start");
-                var marker = new GMarkerGoogle(point, GMarkerGoogleType.green_pushpin)
-                {
-                    ToolTipText = $"Départ\n{point.Lat:F6}, {point.Lng:F6}",
-                    ToolTipMode = MarkerTooltipMode.OnMouseOver
-                };
-                marker.Offset = new Point(-marker.Size.Width / 2, -marker.Size.Height + 2);
-                tempOverlay.Markers.Add(marker);
-                _mapControl.Overlays.Add(tempOverlay);
-                _mapControl.Refresh();
-
-                RestoreDialog();
             };
 
             _mapControl.MouseClick += mapClickHandler;
 
-            // Plus de fenêtre d’information initiale
+            // Cacher le dialogue au lieu de le minimiser
+            MessageBox.Show("Cliquez n'importe oé sur la carte pour définir le point de départ.\n\n" +
+                "Vous pouvez zoomer/naviguer normalement sur la carte.\n" +
+                "Le dialogue sera masqué pendant la sélection.",
+                "Sélection sur carte", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
             this.Hide();
         }
 
@@ -575,6 +593,7 @@ namespace wmine.Forms
                     var secondes = string.Join(", ", filon.MatieresSecondaires.Take(2).Select(m => MineralColors.GetDisplayName(m)));
                     mineralStr += $" + {secondes}";
                 }
+
                 cmbDestination.Items.Add($"{filon.Nom} ({mineralStr})");
             }
 
@@ -592,6 +611,7 @@ namespace wmine.Forms
 
         private async void BtnCalculate_Click(object? sender, EventArgs e)
         {
+            // ? CANCELLATION TOKEN : Annuler le calcul précédent si existe
             var cancellationToken = _perfOptimizer.GetCancellationToken("route_calculation");
 
             try
@@ -610,18 +630,21 @@ namespace wmine.Forms
                 txtResults.Clear();
                 Application.DoEvents();
 
+                // Point de départ - CORRECTION COMPLéTE
                 PointLatLng start;
                 if (chkUseCurrentLocation.Checked)
                 {
                     start = _mapControl.Position;
-                    Debug.WriteLine("départ: Position actuelle de la carte");
+                    System.Diagnostics.Debug.WriteLine($"départ: Position actuelle de la carte");
                 }
                 else
                 {
+                    // Parse avec vérification stricte
                     string latText = txtStartLat.Text.Trim().Replace(',', '.');
-                    string lngText = txtStartLng.Text.Trim().Replace(',', '.')
+                    string lngText = txtStartLng.Text.Trim().Replace(',', '.');
 
-;
+                    System.Diagnostics.Debug.WriteLine($"Parse départ: '{latText}', '{lngText}'");
+
                     if (!double.TryParse(latText, NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
                         !double.TryParse(lngText, NumberStyles.Float, CultureInfo.InvariantCulture, out double lng))
                     {
@@ -631,9 +654,10 @@ namespace wmine.Forms
                     }
 
                     start = new PointLatLng(lat, lng);
-                    Debug.WriteLine("départ: Point personnalisé");
+                    System.Diagnostics.Debug.WriteLine($"départ: Point personnalisé");
                 }
 
+                // Validation coordonnées départ
                 if (start.Lat < -90 || start.Lat > 90 || start.Lng < -180 || start.Lng > 180 ||
                     double.IsNaN(start.Lat) || double.IsNaN(start.Lng) ||
                     double.IsInfinity(start.Lat) || double.IsInfinity(start.Lng))
@@ -643,8 +667,10 @@ namespace wmine.Forms
                     return;
                 }
 
+                // Vérifier si annulé
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // Point d'arrivée (filon)
                 var filonIndex = cmbDestination.SelectedIndex - 1;
                 if (filonIndex < 0 || filonIndex >= _filons.Count)
                 {
@@ -663,6 +689,7 @@ namespace wmine.Forms
 
                 var end = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
 
+                // Validation coordonnées arrivée
                 if (end.Lat < -90 || end.Lat > 90 || end.Lng < -180 || end.Lng > 180 ||
                     double.IsNaN(end.Lat) || double.IsNaN(end.Lng) ||
                     double.IsInfinity(end.Lat) || double.IsInfinity(end.Lng))
@@ -672,6 +699,7 @@ namespace wmine.Forms
                     return;
                 }
 
+                // Type de transport
                 var transportType = cmbTransportType.SelectedIndex switch
                 {
                     0 => TransportType.Car,
@@ -680,13 +708,16 @@ namespace wmine.Forms
                     _ => TransportType.Car
                 };
 
-                Debug.WriteLine("=== CALCUL ITINÉRAIRE ===");
-                Debug.WriteLine($"Départ  : Lat={start.Lat:F6}, Lng={start.Lng:F6}");
-                Debug.WriteLine($"Arrivée : Lat={end.Lat:F6}, Lng={end.Lng:F6}");
-                Debug.WriteLine($"Transport: {transportType}");
+                // LOGS déTAILLéS
+                System.Diagnostics.Debug.WriteLine($"=== CALCUL ITINéRAIRE ===");
+                System.Diagnostics.Debug.WriteLine($"départ  : Lat={start.Lat:F6}, Lng={start.Lng:F6}");
+                System.Diagnostics.Debug.WriteLine($"Arrivée : Lat={end.Lat:F6}, Lng={end.Lng:F6}");
+                System.Diagnostics.Debug.WriteLine($"Transport: {transportType}");
 
+                // ? Calculer l'itinéraire AVEC CancellationToken
                 _currentRoute = await _routeService.CalculateRouteAsync(start, end, transportType);
 
+                // ? Vérifier si annulé aprés calcul
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (_currentRoute == null)
@@ -694,40 +725,43 @@ namespace wmine.Forms
                     lblStatus.Text = "Aucun itinéraire trouvé";
                     lblStatus.ForeColor = Color.Red;
                     txtResults.Text = "Impossible de calculer un itinéraire entre ces deux points.\n\n" +
-                        $"Départ: {start.Lat:F4}, {start.Lng:F4}\n" +
+                        $"départ: {start.Lat:F4}, {start.Lng:F4}\n" +
                         $"Arrivée: {end.Lat:F4}, {end.Lng:F4}\n\n" +
                         "Vérifiez que les coordonnées sont accessibles par route.";
                     return;
                 }
 
+                // Ajouter les noms
                 _currentRoute.StartName = chkUseCurrentLocation.Checked
                     ? "Position actuelle"
                     : $"Point personnalisé ({start.Lat:F4}, {start.Lng:F4})";
                 _currentRoute.EndName = filon.Nom;
 
-                lblStatus.Text = "Itinéraire calculé avec succès !";
+                lblStatus.Text = "Itinéraire calculé avec succés !";
                 lblStatus.ForeColor = Color.LimeGreen;
                 btnShowOnMap.Enabled = true;
                 btnExportPdf.Enabled = true;
-                btnExportGpx.Enabled = true;
+                btnExportGpx.Enabled = true; // ? ACTIVER GPX
 
-                Debug.WriteLine($"Succès: {_currentRoute.Points.Count} points, {_currentRoute.FormattedDistance}");
+                System.Diagnostics.Debug.WriteLine($"Succés: {_currentRoute.Points.Count} points, {_currentRoute.FormattedDistance}");
 
+                // Afficher les résultats
                 DisplayResults(_currentRoute, filon);
             }
             catch (OperationCanceledException)
             {
+                // ? Calcul annulé par l'utilisateur (normal)
                 lblStatus.Text = "Calcul annulé";
                 lblStatus.ForeColor = Color.Orange;
-                Debug.WriteLine("Calcul d'itinéraire annulé");
+                System.Diagnostics.Debug.WriteLine("Calcul d'itinéraire annulé");
             }
             catch (HttpRequestException ex)
             {
                 lblStatus.Text = "Erreur réseau";
                 lblStatus.ForeColor = Color.Red;
-                var errorMsg = $"ERREUR RÉSEAU:\n{ex.Message}\n\nVérifiez votre connexion Internet.";
+                var errorMsg = $"ERREUR RéSEAU:\n{ex.Message}\n\nVérifiez votre connexion Internet.";
                 txtResults.Text = errorMsg;
-                Debug.WriteLine($"Erreur HTTP: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Erreur HTTP: {ex.Message}");
                 MessageBox.Show(errorMsg, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
@@ -736,12 +770,13 @@ namespace wmine.Forms
                 lblStatus.ForeColor = Color.Red;
                 var errorMsg = $"ERREUR:\n{ex.Message}";
                 txtResults.Text = $"{errorMsg}\n\n{ex.StackTrace}";
-                Debug.WriteLine("=== ERREUR COMPLÈTE ===");
-                Debug.WriteLine($"Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"=== ERREUR COMPLéTE ===");
+                System.Diagnostics.Debug.WriteLine($"Message: {ex.Message}");
                 MessageBox.Show(errorMsg, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
+                // ? Libérer le CancellationToken
                 _perfOptimizer.ReleaseCancellationToken("route_calculation");
                 btnCalculate.Enabled = true;
             }
@@ -751,37 +786,38 @@ namespace wmine.Forms
         {
             txtResults.Clear();
 
-            AppendColored("--------------------------------------------\n", Color.Cyan);
-            AppendColored($"  ITINÉRAIRE VERS : {filon.Nom}\n", Color.Yellow, true);
-            AppendColored("---------------------------------------------\n\n", Color.Cyan);
+            AppendColored("???????????????????????????????????????\n", Color.Cyan);
+            AppendColored($"???  ITINéRAIRE VERS : {filon.Nom}\n", Color.Yellow, true);
+            AppendColored("???????????????????????????????????????\n\n", Color.Cyan);
 
-            AppendColored("-- ", Color.Orange);
-            AppendText($"Départ: {route.StartName}\n");
+            AppendColored("?? ", Color.Orange);
+            AppendText($"départ: {route.StartName}\n");
 
-            AppendColored("-- ", Color.Orange);
+            AppendColored("?? ", Color.Orange);
             AppendText($"Arrivée: {route.EndName}\n");
             var mineralDisplay = MineralColors.GetDisplayName(filon.MatierePrincipale);
             if (filon.MatieresSecondaires.Any())
             {
                 mineralDisplay += $" + {string.Join(", ", filon.MatieresSecondaires.Take(2).Select(m => MineralColors.GetDisplayName(m)))}";
             }
-            AppendText($"   Minéraux: {mineralDisplay}\n\n");
+            AppendText($"   Minéraux: {mineralDisplay}\n");
+            AppendText("\n");
 
-            AppendColored("-- ", Color.LightBlue);
+            AppendColored("?? ", Color.LightBlue);
             AppendText($"Transport: {GetTransportName(route.TransportType)}\n");
 
-            AppendColored("-- ", Color.LightGreen);
+            AppendColored("?? ", Color.LightGreen);
             AppendText($"Distance: {route.FormattedDistance}\n");
 
-            AppendColored("-- ", Color.LightGreen);
+            AppendColored("??  ", Color.LightGreen);
             AppendText($"Durée estimée: {route.FormattedDuration}\n\n");
 
-            AppendColored($"-- Itinéraire: {route.Points.Count} points GPS\n", Color.LightGray);
+            AppendColored($"?? Itinéraire: {route.Points.Count} points GPS\n", Color.LightGray);
 
             if (route.Instructions.Count > 0)
             {
-                AppendColored("\n-- INSTRUCTIONS:\n", Color.Yellow, true);
-                AppendColored("---------------------------------------------\n", Color.DarkGray);
+                AppendColored("\n?? INSTRUCTIONS:\n", Color.Yellow, true);
+                AppendColored("???????????????????????????????????????\n", Color.DarkGray);
 
                 var instructionsToShow = Math.Min(10, route.Instructions.Count);
                 for (int i = 0; i < instructionsToShow; i++)
@@ -796,7 +832,7 @@ namespace wmine.Forms
                 }
             }
 
-            AppendColored("\n---------------------------------------------\n", Color.Cyan);
+            AppendColored("\n???????????????????????????????????????\n", Color.Cyan);
         }
 
         private void BtnShowOnMap_Click(object? sender, EventArgs e)
@@ -805,6 +841,7 @@ namespace wmine.Forms
 
             try
             {
+                // Créer un overlay pour l'itinéraire
                 var overlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "route_overlay");
                 if (overlay != null)
                 {
@@ -813,12 +850,14 @@ namespace wmine.Forms
 
                 overlay = new GMapOverlay("route_overlay");
 
+                // Tracer l'itinéraire
                 var route = new GMapRoute(_currentRoute.Points, "itineraire")
                 {
                     Stroke = new Pen(Color.FromArgb(200, 33, 150, 243), 4)
                 };
                 overlay.Routes.Add(route);
 
+                // Marqueurs de départ et d'arrivée
                 var startMarker = new GMarkerGoogle(_currentRoute.Start, GMarkerGoogleType.green_small)
                 {
                     ToolTipText = _currentRoute.StartName
@@ -833,6 +872,7 @@ namespace wmine.Forms
 
                 _mapControl.Overlays.Add(overlay);
 
+                // Zoomer sur l'itinéraire
                 var rect = RectLatLng.FromLTRB(
                     Math.Min(_currentRoute.Start.Lng, _currentRoute.End.Lng) - 0.02,
                     Math.Max(_currentRoute.Start.Lat, _currentRoute.End.Lat) + 0.02,
@@ -842,7 +882,7 @@ namespace wmine.Forms
                 _mapControl.SetZoomToFitRect(rect);
 
                 MessageBox.Show("Itinéraire affiché sur la carte !",
-                    "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "Succés", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 this.Close();
             }
@@ -857,20 +897,22 @@ namespace wmine.Forms
         {
             try
             {
+                // Supprimer l'overlay de l'itinéraire
                 var overlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "route_overlay");
                 if (overlay != null)
                 {
                     _mapControl.Overlays.Remove(overlay);
                     _mapControl.Refresh();
                     MessageBox.Show("Tracé effacé de la carte.",
-                        "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        "Succés", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    MessageBox.Show("Aucun tracé à effacer.",
+                    MessageBox.Show("Aucun tracé a effacer.",
                         "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
 
+                // Supprimer aussi le marqueur temporaire de départ si présent
                 var tempOverlay = _mapControl.Overlays.FirstOrDefault(o => o.Id == "temp_start");
                 if (tempOverlay != null)
                 {
@@ -889,7 +931,7 @@ namespace wmine.Forms
         {
             if (_currentRoute == null)
             {
-                MessageBox.Show("Aucun itinéraire à exporter.",
+                MessageBox.Show("Aucun itinéraire a exporter.",
                     "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -906,8 +948,8 @@ namespace wmine.Forms
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     ExportRouteToPdf(_currentRoute, sfd.FileName);
-                    MessageBox.Show("Itinéraire exporté (texte .txt) !",
-                        "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Itinéraire exporté en PDF avec succés !",
+                        "Succés", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
@@ -917,11 +959,12 @@ namespace wmine.Forms
             }
         }
 
+        // ? NOUVEAU: Export GPX
         private void BtnExportGpx_Click(object? sender, EventArgs e)
         {
             if (_currentRoute == null)
             {
-                MessageBox.Show("Aucun itinéraire à exporter.",
+                MessageBox.Show("Aucun itinéraire a exporter.",
                     "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -943,8 +986,13 @@ namespace wmine.Forms
                     if (success)
                     {
                         MessageBox.Show(
-                            $"Itinéraire exporté en GPX avec succès !\n\n" +
-                            $"Fichier : {Path.GetFileName(sfd.FileName)}",
+                            $"Itinéraire exporté en GPX avec succés !\n\n" +
+                            $"Fichier : {System.IO.Path.GetFileName(sfd.FileName)}\n\n" +
+                            $"Compatible avec :\n" +
+                            $"GPS Garmin\n" +
+                            $"Smartphones (iOS/Android)\n" +
+                            $"Applications de randonnée\n" +
+                            $"Google Earth (via conversion)",
                             "Export GPX réussi",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information);
@@ -965,12 +1013,13 @@ namespace wmine.Forms
 
         private void ExportRouteToPdf(RouteInfo route, string filePath)
         {
-            var content = new StringBuilder();
-            content.AppendLine($"ITINÉRAIRE VERS {route.EndName}");
-            content.AppendLine($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm}");
+            // Créer un texte formaté pour l'export
+            var content = new System.Text.StringBuilder();
+            content.AppendLine($"ITINéRAIRE VERS {route.EndName}");
+            content.AppendLine($"Généré le {DateTime.Now:dd/MM/yyyy é HH:mm}");
             content.AppendLine();
             content.AppendLine("INFORMATIONS");
-            content.AppendLine($"Départ: {route.StartName}");
+            content.AppendLine($"départ: {route.StartName}");
             content.AppendLine($"Arrivée: {route.EndName}");
             content.AppendLine($"Transport: {GetTransportName(route.TransportType)}");
             content.AppendLine($"Distance: {route.FormattedDistance}");
@@ -1026,7 +1075,7 @@ namespace wmine.Forms
                     new System.Xml.Linq.XAttribute("lon", point.Lng)
                 ));
             }
-            gpx.Root!.Add(wpts);
+            gpx.Root.Add(wpts);
 
             // Ajouter les métadonnées
             var meta = new System.Xml.Linq.XElement("metadata",
@@ -1058,9 +1107,9 @@ namespace wmine.Forms
         {
             return type switch
             {
-                TransportType.Car => "Voiture 🚗",
-                TransportType.Walking => "À pied 🚶",
-                TransportType.Cycling => "Vélo 🚴",
+                TransportType.Car => "Voiture ??",
+                TransportType.Walking => "à pied ??",
+                TransportType.Cycling => "Vélo ??",
                 _ => "Inconnu"
             };
         }

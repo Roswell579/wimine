@@ -211,7 +211,7 @@ namespace wmine.Services
     }
 
     /// <summary>
-    /// Marqueur de cluster personnalisé
+    /// Marqueur de cluster personnalisé (ROND COLORÉ)
     /// </summary>
     public class ClusterMarker : GMapMarker
     {
@@ -236,11 +236,9 @@ namespace wmine.Services
             if (_filons.Count > 5)
                 tooltip += $"\n... et {_filons.Count - 5} autres";
 
-            tooltip += "\n\n💡 Cliquez pour zoomer sur cette zone";
+            tooltip += "\n\n💡 Cliquez pour zoomer";
 
             ToolTipText = tooltip;
-
-            // Rendre cliquable
             IsHitTestVisible = true;
         }
 
@@ -251,28 +249,29 @@ namespace wmine.Services
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-                // Cercle extérieur (contour)
+                // Cercle extérieur blanc
                 using (var pen = new Pen(Color.White, 3))
                 {
                     g.DrawEllipse(pen, 5, 5, 40, 40);
                 }
 
-                // Cercle intérieur (fond)
-                using (var brush = new SolidBrush(Color.FromArgb(200, 0, 150, 136)))
+                // Cercle intérieur coloré (couleur du premier minéral du cluster)
+                var mainColor = MineralColors.GetColor(_filons[0].MatierePrincipale);
+                using (var brush = new SolidBrush(Color.FromArgb(200, mainColor)))
                 {
                     g.FillEllipse(brush, 8, 8, 34, 34);
                 }
 
                 // Nombre de filons
                 var text = _filons.Count.ToString();
-                using (var font = new Font("Segoe UI Emoji", 14, FontStyle.Bold))
+                using (var font = new Font("Segoe UI", 14, FontStyle.Bold))
                 using (var brush = new SolidBrush(Color.White))
                 {
                     var textSize = g.MeasureString(text, font);
                     var x = (50 - textSize.Width) / 2;
                     var y = (50 - textSize.Height) / 2;
 
-                    // Ombre du texte
+                    // Ombre
                     using (var shadowBrush = new SolidBrush(Color.FromArgb(100, 0, 0, 0)))
                     {
                         g.DrawString(text, font, shadowBrush, x + 1, y + 1);
@@ -293,7 +292,6 @@ namespace wmine.Services
             }
         }
 
-        // Cleanup du bitmap
         ~ClusterMarker()
         {
             _bitmap?.Dispose();
