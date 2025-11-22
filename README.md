@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ﻿# ?? WMine Localisateur - Application de gestion de filons miniers
 
 ## ?? Description
@@ -376,3 +377,7 @@ Projet personnel - Tous droits réservés
 
 **Version** : Post-OCR OK ?  
 **Derniére mise é jour** : 07/11/2025
+=======
+# wimine
+sig mine var france
+>>>>>>> origin/master
