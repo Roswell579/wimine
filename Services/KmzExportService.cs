@@ -71,10 +71,11 @@ namespace wmine.Services
             // Ajouter chaque filon
             foreach (var filon in filons)
             {
-                if (!filon.Latitude.HasValue || !filon.Longitude.HasValue)
+                // Use TryGetWgs84 to ensure we have WGS84 coordinates
+                if (!filon.TryGetWgs84(out double lat, out double lon))
                     continue;
 
-                AddFilonPlacemark(writer, filon, filesDir);
+                AddFilonPlacemark(writer, filon, filesDir, lat, lon);
             }
 
             writer.WriteEndElement(); // Document
@@ -117,7 +118,7 @@ namespace wmine.Services
         /// <summary>
         /// Ajoute un placemark pour un filon
         /// </summary>
-        private void AddFilonPlacemark(XmlWriter writer, Filon filon, string filesDir)
+        private void AddFilonPlacemark(XmlWriter writer, Filon filon, string filesDir, double lat, double lon)
         {
             writer.WriteStartElement("Placemark");
             writer.WriteElementString("name", filon.Nom);
@@ -142,8 +143,8 @@ namespace wmine.Services
 
             // Point
             writer.WriteStartElement("Point");
-            writer.WriteElementString("coordinates", 
-                $"{filon.Longitude},{filon.Latitude},0");
+            writer.WriteElementString("coordinates",
+                $"{lon.ToString(System.Globalization.CultureInfo.InvariantCulture)},{lat.ToString(System.Globalization.CultureInfo.InvariantCulture)},0");
             writer.WriteEndElement(); // Point
 
             writer.WriteEndElement(); // Placemark
@@ -192,7 +193,15 @@ namespace wmine.Services
             if (filon.LambertX.HasValue && filon.LambertY.HasValue)
                 html.AppendLine($"<b>Lambert 3:</b> X={filon.LambertX:F0}, Y={filon.LambertY:F0}<br/>");
 
-            html.AppendLine($"<b>Coordonn�es GPS:</b> {filon.Latitude:F6}�, {filon.Longitude:F6}�<br/>");
+            // Use TryGetWgs84 for GPS display
+            if (filon.TryGetWgs84(out double gpsLat, out double gpsLon))
+            {
+                html.AppendLine($"<b>Coordonn�es GPS:</b> {gpsLat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}�, {gpsLon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}�<br/>");
+            }
+            else
+            {
+                html.AppendLine("<b>Coordonn�es GPS:</b> Inconnues<br/>");
+            }
 
             if (!string.IsNullOrEmpty(filon.Notes))
             {

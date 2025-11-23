@@ -8,6 +8,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Désactive la génération automatique des attributs d'assembly par le SDK -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="EPPlus" Version="8.2.1" />
@@ -55,6 +60,11 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
+  </ItemGroup>
+
+  <!-- Assurer que le stub OcrImportForm est bien compilé même si un Remove existe -->
+  <ItemGroup>
+    <Compile Include="Forms\OcrImportForm.cs" />
   </ItemGroup>
 
 </Project>
