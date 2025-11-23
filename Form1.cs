@@ -309,10 +309,12 @@ namespace wmine
                     var body = $"Informations sur le filon {filon.Nom}:\n\n" +
                               $"Minéral: {MineralColors.GetDisplayName(filon.MatierePrincipale)}\n" +
                               $"Statut: {filon.Statut}\n";
-                    if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+
+                    if (filon.TryGetWgs84(out double mailLat, out double mailLon))
                     {
-                        body += $"Position: {filon.Latitude:F6}°, {filon.Longitude:F6}°\n";
+                        body += $"Position: {mailLat:F6}°, {mailLon:F6}°\n";
                     }
+
                     var mailto = $"mailto:?subject={Uri.EscapeDataString(subject)}&body={Uri.EscapeDataString(body)}";
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(mailto) { UseShellExecute = true });
                     MessageBox.Show("Email préparé avec succès!", "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -326,9 +328,9 @@ namespace wmine
             var menuCopyCoords = new ToolStripMenuItem($"📋 Copier coordonnées");
             menuCopyCoords.Click += (s, e) =>
             {
-                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                if (filon.TryGetWgs84(out double copyLat, out double copyLon))
                 {
-                    var coords = $"Lat: {filon.Latitude:F6}°, Lon: {filon.Longitude:F6}°";
+                    var coords = $"Lat: {copyLat:F6}°, Lon: {copyLon:F6}°";
                     Clipboard.SetText(coords);
                     MessageBox.Show($"Coordonnées copiées:\n{coords}", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
@@ -626,21 +628,21 @@ namespace wmine
 
             foreach (var filon in _currentFilons)
             {
-                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                if (!filon.TryGetWgs84(out double lat, out double lon))
+                    continue;
+
+                var position = new PointLatLng(lat, lon);
+                var color = MineralColors.GetColor(filon.MatierePrincipale);
+
+                // Créer le marker cristal hexagonal
+                var marker = new HexagonalCrystalMarker(position, color, filon.Nom)
                 {
-                    var position = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
-                    var color = MineralColors.GetColor(filon.MatierePrincipale);
+                    ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
+                    ToolTipMode = MarkerTooltipMode.OnMouseOver,
+                    Tag = filon
+                };
 
-                    // Créer le marker cristal hexagonal
-                    var marker = new HexagonalCrystalMarker(position, color, filon.Nom)
-                    {
-                        ToolTipText = $"{filon.Nom}\n{MineralColors.GetDisplayName(filon.MatierePrincipale)}",
-                        ToolTipMode = MarkerTooltipMode.OnMouseOver,
-                        Tag = filon
-                    };
-
-                    _markersOverlay.Markers.Add(marker);
-                }
+                _markersOverlay.Markers.Add(marker);
             }
 
             // S'assurer que l'overlay est visible et rafraîchir
@@ -665,7 +667,7 @@ namespace wmine
         private void OpenFilonFicheComplete(Filon filon)
         {
             var message = $"Filon: {filon.Nom}\nMinéral: {MineralColors.GetDisplayName(filon.MatierePrincipale)}\nStatut: {filon.Statut}\n";
-            if (filon.Latitude.HasValue && filon.Longitude.HasValue) message += $"Position: {filon.Latitude:F6}°, {filon.Longitude:F6}°\n";
+            if (filon.TryGetWgs84(out double fLat, out double fLon)) message += $"Position: {fLat:F6}°, {fLon:F6}°\n";
             if (!string.IsNullOrEmpty(filon.Notes)) message += $"\nNotes: {filon.Notes}";
             MessageBox.Show(message, $"Fiche de {filon.Nom}", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -808,9 +810,9 @@ namespace wmine
             if (cmbSelectFilon.SelectedItem is FilonComboItem item && item.Filon != null)
             {
                 var filon = item.Filon;
-                if (filon.Latitude.HasValue && filon.Longitude.HasValue)
+                if (filon.TryGetWgs84(out double lat, out double lon))
                 {
-                    gMapControl.Position = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                    gMapControl.Position = new PointLatLng(lat, lon);
                     gMapControl.Zoom = 14;
                 }
             }

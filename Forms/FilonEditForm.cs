@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using wmine.Models;
 using wmine.Services;
 using wmine.UI;
@@ -101,10 +102,13 @@ namespace wmine.Forms
                     txtLambertX.Text = _filon.LambertX.Value.ToString("F2");
                 if (_filon.LambertY.HasValue)
                     txtLambertY.Text = _filon.LambertY.Value.ToString("F2");
-                if (_filon.Latitude.HasValue)
-                    txtLatitude.Text = _filon.Latitude.Value.ToString("F6");
-                if (_filon.Longitude.HasValue)
-                    txtLongitude.Text = _filon.Longitude.Value.ToString("F6");
+
+                // Use TryGetWgs84 to safely display GPS coords
+                if (_filon.TryGetWgs84(out double lat, out double lon))
+                {
+                    txtLatitude.Text = lat.ToString("F6");
+                    txtLongitude.Text = lon.ToString("F6");
+                }
 
                 // Ancrage
                 if (_filon.AnneeAncrage.HasValue)
@@ -571,6 +575,15 @@ namespace wmine.Forms
             string minPrinc = filon.MatierePrincipale.ToString();
             string statuts = filon.Statut.ToString();
 
+            // Use TryGetWgs84 to safely obtain coordinates
+            string coordLon = "0";
+            string coordLat = "0";
+            if (filon.TryGetWgs84(out double gLat, out double gLon))
+            {
+                coordLat = gLat.ToString("F6", CultureInfo.InvariantCulture);
+                coordLon = gLon.ToString("F6", CultureInfo.InvariantCulture);
+            }
+
             return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <kml xmlns=""http://www.opengis.net/kml/2.2"">
   <Document>
@@ -583,7 +596,7 @@ Statuts: {statuts}
 Ancrage: {filon.AnneeAncrage?.ToString() ?? "Inconnu"}
       </description>
       <Point>
-        <coordinates>{filon.Longitude?.ToString() ?? "0"},{filon.Latitude?.ToString() ?? "0"},0</coordinates>
+        <coordinates>{coordLon},{coordLat},0</coordinates>
       </Point>
     </Placemark>
   </Document>

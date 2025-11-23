@@ -33,7 +33,17 @@ namespace wmine.Services
         /// </summary>
         public void LoadFilons(List<Filon> filons)
         {
-            _allFilons = filons.Where(f => f.HasCoordinates()).ToList();
+            // Normaliser et synchroniser toutes les coordonnées (Lambert -> WGS84 si nécessaire)
+            foreach (var f in filons)
+            {
+                f.NormalizeAndSyncCoordinates();
+            }
+
+            // Conserver uniquement les filons avec coordonnées GPS valides
+            _allFilons = filons
+                .Where(f => f.Latitude.HasValue && f.Longitude.HasValue && f.AreCoordinatesValid())
+                .ToList();
+
             UpdateClusters();
         }
 
@@ -65,7 +75,10 @@ namespace wmine.Services
         {
             foreach (var filon in _allFilons)
             {
-                var point = new PointLatLng(filon.Latitude!.Value, filon.Longitude!.Value);
+                if (!filon.Latitude.HasValue || !filon.Longitude.HasValue)
+                    continue;
+
+                var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
                 var color = MineralColors.GetColor(filon.MatierePrincipale);
 
                 var marker = new FilonCrystalMarker(point, filon, color)
@@ -101,7 +114,10 @@ namespace wmine.Services
                 {
                     // Un seul filon, afficher normalement
                     var filon = cluster[0];
-                    var point = new PointLatLng(filon.Latitude!.Value, filon.Longitude!.Value);
+                    if (!filon.Latitude.HasValue || !filon.Longitude.HasValue)
+                        continue;
+
+                    var point = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
                     var color = MineralColors.GetColor(filon.MatierePrincipale);
 
                     var marker = new FilonCrystalMarker(point, filon, color)
@@ -115,8 +131,12 @@ namespace wmine.Services
                 else
                 {
                     // Plusieurs filons, créer un cluster
-                    var centerLat = cluster.Average(f => f.Latitude!.Value);
-                    var centerLon = cluster.Average(f => f.Longitude!.Value);
+                    var valid = cluster.Where(f => f.Latitude.HasValue && f.Longitude.HasValue).ToList();
+                    if (valid.Count == 0)
+                        continue;
+
+                    var centerLat = valid.Average(f => f.Latitude.Value);
+                    var centerLon = valid.Average(f => f.Longitude.Value);
                     var centerPoint = new PointLatLng(centerLat, centerLon);
 
                     var clusterMarker = new ClusterMarker(centerPoint, cluster);
@@ -148,6 +168,9 @@ namespace wmine.Services
                 if (processed.Contains(filon.Id))
                     continue;
 
+                if (!filon.Latitude.HasValue || !filon.Longitude.HasValue)
+                    continue; // Sécurité supplémentaire
+
                 var cluster = new List<Filon> { filon };
                 processed.Add(filon.Id);
 
@@ -157,9 +180,12 @@ namespace wmine.Services
                     if (processed.Contains(other.Id))
                         continue;
 
+                    if (!other.Latitude.HasValue || !other.Longitude.HasValue)
+                        continue;
+
                     var distance = CalculateDistance(
-                        filon.Latitude!.Value, filon.Longitude!.Value,
-                        other.Latitude!.Value, other.Longitude!.Value);
+                        filon.Latitude.Value, filon.Longitude.Value,
+                        other.Latitude.Value, other.Longitude.Value);
 
                     if (distance <= distanceKm)
                     {

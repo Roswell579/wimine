@@ -40,6 +40,11 @@ namespace wmine.Forms
         {
             _routeService = new RouteService();
             _mapControl = mapControl;
+            // Ensure filons have WGS84 where possible
+            foreach (var f in filons)
+            {
+                f.NormalizeAndSyncCoordinates();
+            }
             _filons = filons.Where(f => f.Latitude.HasValue && f.Longitude.HasValue).ToList();
             _perfOptimizer = new PerformanceOptimizer();
 
@@ -619,9 +624,8 @@ namespace wmine.Forms
                 else
                 {
                     string latText = txtStartLat.Text.Trim().Replace(',', '.');
-                    string lngText = txtStartLng.Text.Trim().Replace(',', '.')
+                    string lngText = txtStartLng.Text.Trim().Replace(',', '.');
 
-;
                     if (!double.TryParse(latText, NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
                         !double.TryParse(lngText, NumberStyles.Float, CultureInfo.InvariantCulture, out double lng))
                     {
@@ -654,14 +658,14 @@ namespace wmine.Forms
 
                 var filon = _filons.OrderBy(f => f.Nom).ElementAt(filonIndex);
 
-                if (!filon.Latitude.HasValue || !filon.Longitude.HasValue)
+                if (!filon.TryGetWgs84(out double endLat, out double endLon))
                 {
                     MessageBox.Show("Le filon sélectionné n'a pas de coordonnées GPS valides.",
                         "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                var end = new PointLatLng(filon.Latitude.Value, filon.Longitude.Value);
+                var end = new PointLatLng(endLat, endLon);
 
                 if (end.Lat < -90 || end.Lat > 90 || end.Lng < -180 || end.Lng > 180 ||
                     double.IsNaN(end.Lat) || double.IsNaN(end.Lng) ||

@@ -191,6 +191,28 @@ namespace wmine.Models
         }
 
         /// <summary>
+        /// Tentative sûre pour obtenir des coordonnées WGS84
+        /// Normalise d'abord les coordonnées Lambert si présentes
+        /// Retourne true si latitude/longitude valides sont disponibles
+        /// </summary>
+        public bool TryGetWgs84(out double latitude, out double longitude)
+        {
+            // S'assurer que la conversion Lambert -> WGS84 a été exécutée si nécessaire
+            NormalizeAndSyncCoordinates();
+
+            if (Latitude.HasValue && Longitude.HasValue)
+            {
+                latitude = Latitude.Value;
+                longitude = Longitude.Value;
+                return true;
+            }
+
+            latitude = 0;
+            longitude = 0;
+            return false;
+        }
+
+        /// <summary>
         /// Vérifie si les coordonnées sont cohérentes avec la région Var/Alpes-Maritimes
         /// </summary>
         public bool AreCoordinatesValid()
